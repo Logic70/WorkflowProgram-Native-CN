@@ -1,0 +1,19 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-validate"
+  ],
+  "acceptable_results": [
+    "FAIL",
+    "ENVIRONMENT-SKIP"
+  ],
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "plugin_id": "Invalid Plugin Id",
+  "plugin_name": "",
+  "version": "not-semver",
+  "runtime_mode": "vendored_runtime",
+  "command_files": [],
+  "skill_files": [],
+  "requires_workflowprogram": false,
+  "source_target_root": ""
+}

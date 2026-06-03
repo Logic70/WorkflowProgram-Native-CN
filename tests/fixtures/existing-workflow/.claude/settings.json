@@ -1,0 +1,14 @@
+{
+  "skills": {
+    "demo-skill": {
+      "description": "Demo workflow skill for fixture validation",
+      "file": ".claude/skills/demo-skill/SKILL.md"
+    }
+  },
+  "commands": {
+    "demo": {
+      "description": "Demo command for fixture validation",
+      "file": ".claude/commands/demo.md"
+    }
+  }
+}

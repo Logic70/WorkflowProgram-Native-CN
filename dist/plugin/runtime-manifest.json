@@ -1,0 +1,13 @@
+{
+  "manifest_version": 1,
+  "python_dependency_model": "plugin-local-site-packages",
+  "requirements_file": "requirements.lock.txt",
+  "launcher": "bin/workflowprogram-python",
+  "doctor": "bin/workflowprogram-doctor",
+  "packages": [
+    {
+      "name": "PyYAML",
+      "version": "6.0.3"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "WorkflowProgram High-Level Design"
+  short_description: "按通用架构视图与专属编排规则设计 WorkflowProgram 高层架构"
+  default_prompt: "使用 $workflowprogram-highlevel-design 为当前 WorkflowProgram 变更整理高层设计，并区分稳态架构与迁移计划。"

@@ -1,0 +1,23 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-iterate"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_ARTIFACTS_HOST_CAPABILITY_REQUIRED_READY",
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md",
+    "outputs/stages/host-capability-report.json",
+    "outputs/stages/environment-remediation-report.json",
+    "outputs/stages/environment-remediation-guide.md",
+    "outputs/stages/s6-lessons-delta.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

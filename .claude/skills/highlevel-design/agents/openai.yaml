@@ -1,0 +1,4 @@
+interface:
+  display_name: "High-Level Design"
+  short_description: "从用户、逻辑、部署、运行时和数据视图设计系统高层架构"
+  default_prompt: "使用 $highlevel-design 从架构视图出发整理当前系统的高层设计，并区分稳态架构与迁移计划。"

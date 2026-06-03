@@ -1,0 +1,6 @@
+{
+  "expected_status": "FAIL",
+  "expected_error_substrings": [
+    "question-backlog.json must contain at least one design-consequential question for L/XL drafts"
+  ]
+}

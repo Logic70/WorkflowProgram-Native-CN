@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "plugin_id": "stride-security-workflow",
+  "plugin_name": "STRIDE Security Workflow",
+  "version": "0.1.0",
+  "runtime_mode": "workflowprogram_dependency",
+  "command_files": [
+    "commands/stride-security-workflow.md"
+  ],
+  "skill_files": [
+    "skills/stride-security-workflow/SKILL.md"
+  ],
+  "requires_workflowprogram": true,
+  "source_target_root": "tests/fixtures/existing-workflow"
+}

@@ -1,0 +1,7 @@
+{
+  "skills": {
+    "bad-skill": {
+      "description": "Broken skill fixture",
+      "file": ".claude/skills/bad-skill/SKILL.md"
+    }
+  },

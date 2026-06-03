@@ -1,0 +1,23 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_ARTIFACTS_DESIGN_REVIEW_GATE_VALID",
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md",
+    "outputs/stages/design-review/design-review-packet.json",
+    "outputs/stages/design-review/issues.json",
+    "outputs/stages/design-review/closure.json",
+    "outputs/stages/design-review/gate-validation.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

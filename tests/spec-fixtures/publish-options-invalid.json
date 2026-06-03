@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "target_root": "",
+  "plugin_id": "Invalid Plugin Id",
+  "repository": "",
+  "version": "not-semver",
+  "runtime_mode": "unknown",
+  "repo_mode": "current_repo",
+  "dry_run": false,
+  "execute": true,
+  "approved": false,
+  "skip_claude_validate": false
+}

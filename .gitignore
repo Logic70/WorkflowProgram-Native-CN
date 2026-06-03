@@ -1,0 +1,25 @@
+# Claude Code Local Files
+.claude/settings.local.json
+.claude/history/
+.claude/memory/
+.codex/
+openspec/
+**/*.local.json
+.mcp.json
+.vscode/
+.zread/
+dist/plugin/.plugin-data/
+tests/transcripts/20*/
+
+# Environment Variables
+.env
+.env.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Dependencies (if added later)
+node_modules/
+__pycache__/
+*.pyc

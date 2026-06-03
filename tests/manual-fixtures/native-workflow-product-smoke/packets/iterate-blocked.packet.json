@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "schema_name": "native-workflow-interactive-smoke",
+  "command": "packet",
+  "evidenceProfile": "early-blocker",
+  "workflow": "workflowprogram-iterate",
+  "scriptPath": "D:\\Code\\WorkflowProgram-CN\\.claude\\workflows\\workflowprogram-iterate.js",
+  "args": {},
+  "expectedStatus": "BLOCKED",
+  "scenarioId": "iterate-blocked",
+  "executionPrerequisites": [
+    "Claude Code installed and logged in (claude auth status reports loggedIn=true)",
+    "CLAUDE_CODE_WORKFLOWS=1 or equivalent feature flag enabled",
+    "Terminal with WSL or native Linux/macOS session (Windows native terminal in WSL login-shell mode)",
+    "Target workflow JS file accessible at the specified absolute scriptPath",
+    "Workflow is expected to produce BLOCKED status; capture both PASS and BLOCKED JSONL for comparison"
+  ],
+  "suggestedPrompt": "ultrawork\n\nWorkflow({\n  scriptPath: \"D:\\Code\\WorkflowProgram-CN\\.claude\\workflows\\workflowprogram-iterate.js\"\n})\n\n# The 'ultrawork' keyword triggers an ultrawork_request attachment so Claude\n# invokes the Workflow tool with scriptPath/args directly. Do NOT manually type the\n# Workflow call — let the attachment handle it.\n# After completion, observe the /workflows panel.\n# Save the session JSONL from:\n#   ~/.claude/projects/<project-hash>/<session-id>.jsonl\n# And optionally the journal from:\n#   ~/.claude/projects/<project-hash>/<session-id>/subagents/workflows/<run-id>/journal.jsonl",
+  "expectedEvidenceTypes": [
+    "skill_listing",
+    "workflow_invoked",
+    "async_launched",
+    "completed_blocked"
+  ],
+  "manualReviewHints": [
+    "Verify the session JSONL was captured from a real interactive Claude Code session, not synthesized.",
+    "Check that skill_listing includes the expected workflow name.",
+    "Confirm the Workflow tool was invoked with a valid absolute scriptPath.",
+    "Confirm async_launched was returned with a non-empty run_id.",
+    "Verify subagent_start and subagent_output markers exist for at least one agent.",
+    "Verify the subagent output contains structured JSON with a status field.",
+    "Verify the workflow completion notification contains the expected workflow name and status.",
+    "If expected-status is BLOCKED, confirm the final status is a BLOCKED_* variant, not PASS."
+  ],
+  "computerUseBoundary": "manual-wsl-execution-supported",
+  "computerUseNote": "Computer Use terminal-driving adapter is deferred until an allowed non-terminal integration exists. Current supported mode: manual WSL login-shell execution followed by deterministic JSONL evaluation.",
+  "disclaimer": "This packet has NOT been executed. It describes execution prerequisites, suggested prompts, expected evidence types, and manual review hints. Use the 'evaluate' subcommand against captured JSONL to produce a deterministic evaluation result."
+}

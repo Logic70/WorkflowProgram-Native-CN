@@ -1,0 +1,19 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_ARTIFACTS_DESIGN_REVIEW_PACKET_PRESENT",
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

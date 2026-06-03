@@ -1,0 +1,179 @@
+meta:
+  name: invalid-workflow-graph
+  version: "1.0.0"
+  target_platform: claude_code
+  source_design: workflow-design.md
+  complexity: M
+
+stages:
+  - id: requirement
+    stage_slot: S1
+    name: Requirement
+    pattern: Explore
+    agent_ref: requirement_analyst
+    output: workflow-spec.md
+  - id: context
+    stage_slot: S2
+    name: Context
+    pattern: Explore
+    agent_ref: requirement_analyst
+    output: outputs/stages/s2-context-report.md
+  - id: design
+    stage_slot: S3
+    name: Design
+    pattern: Specialized
+    agent_ref: workflow_designer
+    output: workflow-spec.yaml
+  - id: generate
+    stage_slot: S4
+    name: Generate
+    pattern: Sequential
+    output: |
+      outputs/candidate/.workflowprogram/runtime
+      .workflowprogram/runtime/workflow-entry.py
+      .workflowprogram/runtime/workflow-runner.py
+      .workflowprogram/runtime/validate-run-state.py
+      .workflowprogram/runtime/runtime-manifest.json
+  - id: validate
+    stage_slot: S5
+    name: Validate
+    pattern: Test-Driven
+    agent_ref: workflowprogram-validate
+    output: outputs/stages/s5-validation-summary.json
+  - id: lessons
+    stage_slot: S6
+    name: Lessons
+    pattern: Sequential
+    output: outputs/stages/s6-lessons-delta.md
+
+intent_flows:
+  develop:
+    required_stage_slots: [S1, S2, S3, S4, S5, S6]
+    optional_stage_slots: []
+  audit:
+    required_stage_slots: [S5, S6]
+    optional_stage_slots: []
+  iterate:
+    required_stage_slots: [S6]
+    optional_stage_slots: [S5]
+  validate:
+    required_stage_slots: [S5]
+    optional_stage_slots: [S6]
+
+workflow_graph:
+  schema_version: 1
+  templates_used: [target-graph]
+  entrypoints:
+    - name: missing-command
+      node: start
+  nodes:
+    - id: start
+      role: intake
+      template: target-graph
+      input_refs: ["$ARGUMENTS"]
+      output_refs: ["outputs/target-workflow/start.md"]
+      gate: none
+      owner: example-skill
+    - id: orphan
+      role: undeclared_asset_writer
+      template: target-graph
+      input_refs: ["outputs/target-workflow/start.md"]
+      output_refs: [".claude/agents/undeclared.md"]
+      gate: none
+      owner: example-skill
+  transitions: []
+
+agent_refs:
+  - requirement_analyst
+  - workflow_designer
+  - workflowprogram-validate
+
+skills:
+  - name: validate-file
+    internal: true
+
+registry:
+  commands:
+    - name: example
+      file: .claude/commands/example.md
+  skills:
+    - name: example-skill
+      file: .claude/skills/example/SKILL.md
+  agents: []
+  hooks: []
+  runtime_assets:
+    - name: workflow-entry
+      file: .workflowprogram/runtime/workflow-entry.py
+
+constraints:
+  always: ["Keep specs machine-readable"]
+  never: ["Write undeclared target assets"]
+
+resource_limits:
+  max_parallel_agents: 4
+  max_retries_per_stage: 3
+  max_validation_loops: 10
+
+runtime_contract:
+  write_boundaries:
+    target_root_allow: [".claude/**", ".workflowprogram/**"]
+    run_root_allow: ["context.json", "state.json", "events.jsonl", "outputs/**", "workflow-spec.yaml"]
+    temp_root_allow: ["**"]
+    deny: ["**/.git/**"]
+  required_evidence:
+    - context.json
+    - state.json
+    - events.jsonl
+  failure_kinds: [none, design, implementation, environment, conflict]
+  environment_skip:
+    - code: RUNTIME_HOST_MISSING
+      check: runtime_host_available
+      message: Runtime host missing
+
+generated_runtime_contract:
+  runtime_root: .workflowprogram/runtime
+  design_spec_path: .workflowprogram/design/workflow-spec.yaml
+  entry_script: .workflowprogram/runtime/workflow-entry.py
+  runner_script: .workflowprogram/runtime/workflow-runner.py
+  state_validator_script: .workflowprogram/runtime/validate-run-state.py
+  runtime_manifest: .workflowprogram/runtime/runtime-manifest.json
+  run_root_dir: .workflowprogram/runs
+  mode: shared-control-plane-wrapper
+  runtime_capabilities: [state_transitions, run_state_validation]
+
+test_contract:
+  entry:
+    main_entry: example
+    entry_type: slash_command
+    required_args: ["$ARGUMENTS"]
+    missing_arg_verdict: FAIL
+    invalid_entry_verdict: FAIL
+  boundary:
+    write_boundaries_ref: runtime_contract.write_boundaries
+    managed_overwrite_policy: reject-unmanaged-overwrite
+    conflict_expectation: keep-candidate-and-report
+    external_write_policy: deny
+  flow:
+    required_stages: [requirement, context, design, generate, validate, lessons]
+    skippable_stages: []
+    failure_recovery:
+      design: design
+      implementation: generate
+    terminal_conditions:
+      PASS: done
+      WARN: blocked
+      FAIL: failed
+      ENVIRONMENT-SKIP: done
+  artifacts:
+    deliverables:
+      - .workflowprogram/managed-files.json
+      - .workflowprogram/runtime/workflow-entry.py
+      - .workflowprogram/runtime/workflow-runner.py
+      - .workflowprogram/runtime/validate-run-state.py
+      - .workflowprogram/runtime/runtime-manifest.json
+    evidence_ref: runtime_contract.required_evidence
+    optional_outputs: []
+  failure:
+    failure_kinds_ref: runtime_contract.failure_kinds
+    environment_skip_ref: runtime_contract.environment_skip
+    implemented_now: [none, design, implementation]

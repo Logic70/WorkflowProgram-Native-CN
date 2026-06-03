@@ -1,0 +1,27 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_ARTIFACTS_HOST_CAPABILITY_REQUIRED_READY",
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md",
+    "outputs/stages/clarification-record.json",
+    "outputs/stages/open-questions.json",
+    "outputs/stages/assumption-log.md",
+    "outputs/stages/design-readiness-report.json",
+    "outputs/stages/clarification-challenge-report.json",
+    "outputs/stages/clarification-handoff.json",
+    "outputs/stages/clarification-evidence.json",
+    "outputs/stages/host-capability-report.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

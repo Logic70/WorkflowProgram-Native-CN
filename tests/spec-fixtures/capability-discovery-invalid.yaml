@@ -1,0 +1,183 @@
+meta:
+  name: capability-discovery-invalid
+  version: "1.0.0"
+  target_platform: claude_code
+  source_design: workflow-design.md
+  complexity: M
+
+stages:
+  - id: requirement
+    stage_slot: S1
+    name: 需求澄清
+    pattern: Explore
+    agent_ref: requirement_analyst
+    input: $ARGUMENTS
+    output: workflow-spec.md
+    gate: user_approval
+    max_retries: 3
+    on_approve: context
+    on_reject: abort
+  - id: context
+    stage_slot: S2
+    name: 领域研究
+    pattern: Explore
+    agent_ref: requirement_analyst
+    input: workflow-spec.md
+    output: outputs/stages/s2-context-report.md
+    max_retries: 3
+  - id: design
+    stage_slot: S3
+    name: 工作流设计
+    pattern: Specialized
+    agent_ref: workflow_designer
+    input: outputs/stages/s2-context-report.md
+    output: |
+      workflow-design.md
+      workflow-spec.yaml
+      workflow-view.md
+      workflow-maintenance.md
+    gate: user_approval
+    max_retries: 3
+    on_approve: generate
+    on_reject: requirement
+  - id: generate
+    stage_slot: S4
+    name: 文件生成
+    pattern: Sequential
+    output: |
+      outputs/candidate/.claude
+      outputs/candidate/.workflowprogram/design
+      outputs/candidate/.workflowprogram/runtime
+      outputs/managed-change-plan.json
+      outputs/managed-change-result.json
+      .claude/settings.json
+      .workflowprogram/design/workflow-spec.yaml
+      .workflowprogram/design/workflow-view.md
+      .workflowprogram/design/workflow-maintenance.md
+      .workflowprogram/runtime/workflow-entry.py
+      .workflowprogram/runtime/workflow-runner.py
+      .workflowprogram/runtime/validate-run-state.py
+      .workflowprogram/runtime/runtime-manifest.json
+  - id: validate
+    stage_slot: S5
+    name: 运行时验证
+    pattern: Test-Driven
+    agent_ref: workflowprogram-validate
+    input: outputs/managed-change-result.json
+    output: |
+      validation-runtime-report.md
+      outputs/stages/s5-validation-summary.json
+  - id: lessons
+    stage_slot: S6
+    name: 约束演进
+    pattern: Sequential
+    output: |
+      outputs/stages/s6-lessons-delta.md
+      .claude/rules/constraints.md
+
+intent_flows:
+  develop:
+    required_stage_slots: [S1, S2, S3, S4, S5, S6]
+    optional_stage_slots: []
+  audit:
+    required_stage_slots: [S5, S6]
+    optional_stage_slots: []
+  iterate:
+    required_stage_slots: [S6]
+    optional_stage_slots: [S5]
+  validate:
+    required_stage_slots: [S5]
+    optional_stage_slots: [S6]
+
+agent_refs: [requirement_analyst, workflow_designer, workflowprogram-validate]
+skills:
+  - name: validate-file
+    internal: true
+registry:
+  commands:
+    - name: example
+      file: .claude/commands/example.md
+  skills:
+    - name: example-skill
+      file: .claude/skills/example/SKILL.md
+constraints:
+  always: [keep deterministic workflow contracts machine-readable]
+  never: [exceed 4 parallel agents]
+resource_limits:
+  max_parallel_agents: 4
+  max_retries_per_stage: 3
+  max_validation_loops: 10
+runtime_contract:
+  write_boundaries:
+    target_root_allow: [.claude/**, .workflowprogram/**]
+    run_root_allow: [context.json, state.json, events.jsonl, workflow-spec.yaml, workflow-*.md, workflow-view.md, transcript.md, validation-runtime-report.md, outputs/**]
+    temp_root_allow: ["**"]
+    deny: ["**/.git/**"]
+  required_evidence: [context.json, state.json, events.jsonl, outputs/progress/current-progress.json, outputs/progress/milestones.jsonl, outputs/progress/user-progress.md, outputs/stages/s0-route.json, outputs/stages/runner-summary.json]
+  failure_kinds: [none, design, implementation, environment, conflict]
+  environment_skip:
+    - code: RUNTIME_HOST_MISSING
+      check: runtime_host_available
+      message: runtime host missing
+    - code: TARGET_NOT_WRITABLE
+      check: target_root_writable
+      message: target root not writable
+    - code: RUNTIME_HOST_NOT_READY
+      check: runtime_host_ready
+      message: runtime host not ready
+generated_runtime_contract:
+  runtime_root: .workflowprogram/runtime
+  design_spec_path: .workflowprogram/design/workflow-spec.yaml
+  entry_script: .workflowprogram/runtime/workflow-entry.py
+  runner_script: .workflowprogram/runtime/workflow-runner.py
+  state_validator_script: .workflowprogram/runtime/validate-run-state.py
+  runtime_manifest: .workflowprogram/runtime/runtime-manifest.json
+  run_root_dir: .workflowprogram/runs
+  mode: shared-control-plane-wrapper
+  runtime_capabilities: [state_transitions, run_state_validation]
+capability_discovery:
+  enabled: true
+  domains: [ReverseEngineering]
+  include_local_installed: true
+  include_curated_profiles: true
+  infer_from_request: false
+test_contract:
+  entry:
+    main_entry: example
+    entry_type: slash_command
+    required_args: [$ARGUMENTS]
+    missing_arg_verdict: FAIL
+    invalid_entry_verdict: FAIL
+  boundary:
+    write_boundaries_ref: runtime_contract.write_boundaries
+    managed_overwrite_policy: reject-unmanaged-overwrite
+    conflict_expectation: keep-candidate-and-report
+    external_write_policy: deny
+  flow:
+    required_stages: [requirement, context, design, generate, validate, lessons]
+    skippable_stages: []
+    failure_recovery:
+      design: design
+      implementation: generate
+    terminal_conditions:
+      PASS: done
+      WARN: blocked
+      FAIL: failed
+      ENVIRONMENT-SKIP: done
+  artifacts:
+    deliverables:
+      - .claude/settings.json
+      - .workflowprogram/design/workflow-spec.yaml
+      - .workflowprogram/design/workflow-view.md
+      - .workflowprogram/design/workflow-maintenance.md
+      - .workflowprogram/runtime/workflow-entry.py
+      - .workflowprogram/runtime/workflow-runner.py
+      - .workflowprogram/runtime/validate-run-state.py
+      - .workflowprogram/runtime/runtime-manifest.json
+      - .workflowprogram/managed-files.json
+    evidence_ref: runtime_contract.required_evidence
+    optional_outputs: [.claude/commands/*.md]
+  failure:
+    failure_kinds_ref: runtime_contract.failure_kinds
+    environment_skip_ref: runtime_contract.environment_skip
+    implemented_now: [none, design, implementation, environment]

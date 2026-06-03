@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  export CLAUDE_PLUGIN_ROOT
+fi
+
+if [ -z "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_ROOT}/.plugin-data"
+  export CLAUDE_PLUGIN_DATA
+fi
+
+exec python3 "${CLAUDE_PLUGIN_ROOT}/scripts/clean-workflowprogram.py" "$@"

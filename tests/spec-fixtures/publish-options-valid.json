@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "target_root": "tests/fixtures/existing-workflow",
+  "plugin_id": "stride-security-workflow",
+  "repository": "Logic70/stride-security-workflow",
+  "version": "0.1.0",
+  "runtime_mode": "workflowprogram_dependency",
+  "repo_mode": "export_repo",
+  "dry_run": true,
+  "execute": false,
+  "approved": false,
+  "allow_warn": false,
+  "skip_claude_validate": true
+}

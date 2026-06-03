@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: workflowprogram-python <script> [args...]" >&2
+  exit 2
+fi
+
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  export CLAUDE_PLUGIN_ROOT
+fi
+
+if [ -z "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_ROOT}/.plugin-data"
+  export CLAUDE_PLUGIN_DATA
+fi
+
+SITE_PACKAGES="${CLAUDE_PLUGIN_DATA}/python/site-packages"
+BOOTSTRAP_STATE="${CLAUDE_PLUGIN_DATA}/python/bootstrap-state.json"
+
+if [ ! -d "$SITE_PACKAGES" ] || [ ! -f "$BOOTSTRAP_STATE" ]; then
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bootstrap-python-runtime.py" --quiet >/dev/null 2>&1 || true
+fi
+
+if [ ! -d "$SITE_PACKAGES" ]; then
+  echo "WorkflowProgram Python runtime is not ready. Expected $SITE_PACKAGES. Run workflowprogram-doctor." >&2
+  exit 1
+fi
+
+if [ ! -f "$BOOTSTRAP_STATE" ]; then
+  echo "WorkflowProgram Python bootstrap state is missing. Run workflowprogram-doctor." >&2
+  exit 1
+fi
+
+export PYTHONPATH="${SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
+exec python3 "$@"

@@ -1,0 +1,9 @@
+{
+  "expected_status": "FAIL",
+  "expected_error_substrings": [
+    "section 'Clarification Summary' field '澄清轮次' must be >= 2",
+    "section 'Open Questions' field '阻塞未决问题' must be empty before S1 can be treated as complete",
+    "design-readiness-report.json must mark the request as READY before S1 is considered complete",
+    "clarification-handoff.json must mark ready=true before S2/S3 consume it"
+  ]
+}

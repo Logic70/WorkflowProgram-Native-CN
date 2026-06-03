@@ -1,0 +1,4 @@
+interface:
+  display_name: "Low-Level Design"
+  short_description: "将高层架构细化为可直接实施和验证的软件详细设计契约"
+  default_prompt: "使用 $lowlevel-design 根据当前高层架构整理可直接实施和验证的详细设计。"

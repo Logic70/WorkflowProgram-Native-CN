@@ -1,0 +1,19 @@
+{
+  "name": "workflowprogram-flow-slides",
+  "version": "1.0.0",
+  "description": "WorkflowProgram process-flow deck generated with PptxGenJS",
+  "main": "generate_workflowprogram_flow_slides.js",
+  "scripts": {
+    "generate": "node generate_workflowprogram_flow_slides.js"
+  },
+  "keywords": [
+    "workflowprogram",
+    "slides",
+    "pptx"
+  ],
+  "author": "Codex",
+  "license": "ISC",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

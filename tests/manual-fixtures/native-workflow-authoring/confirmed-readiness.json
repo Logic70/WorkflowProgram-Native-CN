@@ -1,0 +1,18 @@
+{
+  "request": "Create a read-only code review workflow that checks correctness and test gaps with two parallel reviewers and returns a structured verdict.",
+  "target_root": "/mnt/d/Code/workflowprogram-native-trial",
+  "confirmed_by_user": true,
+  "lenses": {
+    "purpose": "Find correctness defects and missing test coverage before delivery.",
+    "object_model": "Read repository files and return a structured review verdict without editing target files.",
+    "process_model": "Explore the target, design two parallel review perspectives, review blockers, and return a handoff.",
+    "decision_model": "Return BLOCKED when a correctness or validation blocker remains; otherwise return PASS.",
+    "evidence_model": "Require repository evidence and explicit validation recommendations.",
+    "acceptance_model": "PASS requires a structured handoff and no unresolved blocker.",
+    "boundary_model": "Do not edit target files and do not perform managed apply."
+  },
+  "success_criteria": [
+    "The native meta-workflow is visible in /workflows and returns a structured PASS or BLOCKED result."
+  ],
+  "open_questions": []
+}

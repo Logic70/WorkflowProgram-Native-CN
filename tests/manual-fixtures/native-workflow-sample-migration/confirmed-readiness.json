@@ -1,0 +1,19 @@
+{
+  "request": "Generate the read-only Native Workflow sample migration with pipeline, parallel structured reviews, and a JavaScript gate.",
+  "target_root": "<target-root>",
+  "confirmed_by_user": true,
+  "lenses": {
+    "purpose": "Exercise the Native Workflow JS migration surface.",
+    "object_model": "Process deterministic review candidates and structured votes.",
+    "process_model": "Run Intake, Review, and Decide phases.",
+    "decision_model": "Block when any vote is not PASS.",
+    "evidence_model": "Return structured candidate and vote results.",
+    "acceptance_model": "PASS when all reviews pass and BLOCKED_REVIEW otherwise.",
+    "boundary_model": "Remain read-only and avoid target file writes."
+  },
+  "success_criteria": [
+    "The generated Native Workflow JS passes static validation.",
+    "The workflow returns a stable structured envelope."
+  ],
+  "open_questions": []
+}

@@ -1,0 +1,46 @@
+{
+  "name": "logic70-plugins",
+  "owner": {
+    "name": "Logic_70",
+    "email": "zjmp8870@outlook.com"
+  },
+  "metadata": {
+    "description": "Native Workflow JS control-plane toolkit for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "workflowprogram-native-cn",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/Logic70/WorkflowProgram-Native-CN.git",
+        "path": "dist/plugin",
+        "ref": "main"
+      },
+      "description": "A Claude Code plugin that packages WorkflowProgram Native as reusable Workflow JS control-plane skills, scripts, and workflows",
+      "version": "0.1.0",
+      "author": {
+        "name": "Logic_70",
+        "email": "zjmp8870@outlook.com"
+      },
+      "homepage": "https://github.com/Logic70/WorkflowProgram-Native-CN",
+      "repository": "https://github.com/Logic70/WorkflowProgram-Native-CN",
+      "license": "MIT",
+      "keywords": [
+        "workflow",
+        "commands",
+        "skills",
+        "agents",
+        "audit"
+      ],
+      "category": "workflow",
+      "tags": [
+        "workflow",
+        "claude-code",
+        "commands",
+        "skills",
+        "agents"
+      ],
+      "strict": false
+    }
+  ]
+}

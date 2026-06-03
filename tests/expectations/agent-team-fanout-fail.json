@@ -1,0 +1,29 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_FLOW_TEAM_FAN_OUT_WITHIN_LIMIT",
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md",
+    "outputs/stages/clarification-record.json",
+    "outputs/stages/open-questions.json",
+    "outputs/stages/assumption-log.md",
+    "outputs/stages/design-readiness-report.json",
+    "outputs/stages/clarification-challenge-report.json",
+    "outputs/stages/clarification-handoff.json",
+    "outputs/stages/clarification-evidence.json",
+    "outputs/stages/team-plan.json",
+    "outputs/stages/team-results.json",
+    "outputs/stages/team-join-summary.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

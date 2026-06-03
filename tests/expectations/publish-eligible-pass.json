@@ -1,0 +1,19 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-publish"
+  ],
+  "acceptable_results": [
+    "PASS"
+  ],
+  "required_files": [
+    "outputs/stages/publish/publish-eligibility.json",
+    "outputs/stages/publish/plugin-package-plan.json",
+    "outputs/stages/publish/plugin-validation-report.json",
+    "outputs/stages/publish/github-publish-result.json",
+    "outputs/stages/publish/install-instructions.md",
+    "outputs/stages/publish/publish-summary.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

@@ -1,0 +1,303 @@
+# Workflow Specification Template
+# Code Agent 编排专用格式
+
+meta:
+  name: write-boundary-violation-workflow
+  version: "1.0.0"
+  target_platform: claude_code
+  source_design: workflow-design.md
+  complexity: M  # S/M/L/XL - 用于 Stage 5 Turn Count 配置
+
+# 阶段定义
+stages:
+  - id: requirement
+    stage_slot: S1
+    name: 需求澄清
+    pattern: Explore
+    agent_ref: requirement_analyst
+    input: $ARGUMENTS
+    output: workflow-spec.md
+    gate: user_approval
+    max_retries: 3
+    on_approve: context
+    on_reject: abort
+
+  - id: context
+    stage_slot: S2
+    name: 领域研究
+    pattern: Explore
+    agent_ref: requirement_analyst
+    input: workflow-spec.md
+    output: outputs/stages/s2-context-report.md
+    max_retries: 3
+
+  - id: design
+    stage_slot: S3
+    name: 工作流设计
+    pattern: Specialized
+    agent_ref: workflow_designer
+    input: outputs/stages/s2-context-report.md
+    output: |
+      workflow-design.md
+      workflow-spec.yaml
+      workflow-view.md
+      workflow-maintenance.md
+    gate: user_approval
+    auto_approve_cond: "--auto-approve or CI=true"
+    max_retries: 3
+    on_approve: generate
+    on_reject: requirement
+
+  - id: generate
+    stage_slot: S4
+    name: 文件生成
+    pattern: Sequential
+    steps:
+      - action: generate_agents
+        from_yaml: agents
+      - action: generate_skills
+        from_yaml: skills
+      - action: generate_commands
+        from_yaml: commands
+      - action: update_settings
+        from_yaml: registry
+    output: |
+      outputs/candidate/.claude
+      outputs/candidate/.workflowprogram/design
+      outputs/candidate/.workflowprogram/runtime
+      outputs/managed-change-plan.json
+      outputs/managed-change-result.json
+      .claude/agents/*.md
+      .claude/skills/*/SKILL.md
+      .claude/commands/*.md
+      .claude/settings.json
+      .workflowprogram/design/workflow-spec.yaml
+      .workflowprogram/design/workflow-view.md
+      .workflowprogram/design/workflow-maintenance.md
+      .workflowprogram/runtime/workflow-entry.py
+      .workflowprogram/runtime/workflow-runner.py
+      .workflowprogram/runtime/validate-run-state.py
+      .workflowprogram/runtime/runtime-manifest.json
+
+  - id: validate
+    stage_slot: S5
+    name: 运行时验证
+    pattern: Test-Driven
+    agent_ref: workflowprogram-validate
+    input: outputs/managed-change-result.json
+    resources:
+      max_turn_count: 100  # M 复杂度默认 100 turns
+      circuit_breaker:
+        trigger: PostToolUseFailure
+        threshold: 3
+    max_retries: 3
+    output: |
+      validation-runtime-report.md
+      outputs/stages/s5-validation-summary.json
+    feedback:
+      on_fail_design: design  # 设计缺陷 → 回到 Stage 3
+      on_fail_impl: generate  # 实现缺陷 → 回到 Stage 4
+
+  - id: lessons
+    stage_slot: S6
+    name: 约束演进
+    pattern: Sequential
+    actions:
+      - extract_lessons
+      - update_constraints
+    output: |
+      outputs/stages/s6-lessons-delta.md
+      .claude/rules/constraints.md
+
+intent_flows:
+  develop:
+    required_stage_slots:
+      - S1
+      - S2
+      - S3
+      - S4
+      - S5
+      - S6
+    optional_stage_slots: []
+  audit:
+    required_stage_slots:
+      - S5
+      - S6
+    optional_stage_slots: []
+  iterate:
+    required_stage_slots:
+      - S6
+    optional_stage_slots:
+      - S5
+  validate:
+    required_stage_slots:
+      - S5
+    optional_stage_slots:
+      - S6
+
+# Agent 引用列表（指向 .claude/agents/*.md）
+agent_refs:
+  - requirement_analyst
+  - workflow_designer
+  - workflowprogram-validate
+  - security-reviewer
+  - performance-reviewer
+  - style-reviewer
+  - logic-reviewer
+
+# 技能引用列表
+skills:
+  - name: validate-file
+    internal: true
+  - name: validate-settings
+    internal: true
+
+# 命令注册表
+registry:
+  commands:
+    - name: example
+      file: .claude/commands/example.md
+  skills:
+    - name: example-skill
+      file: .claude/skills/example/SKILL.md
+
+# 约束规则（将写入 constraints.md）
+constraints:
+  always:
+    - "为用户可见命令保留 ## Usage 段"
+    - "将命令组织为编号阶段，提供 Goal 与 Verify"
+    - "子代理提示词内联，不依赖外部文件"
+  never:
+    - "在单个 fan-out 阶段中超过 4 个并行代理"
+    - "让子代理运行时依赖外部 agent 文件"
+    - "在未经验证的情况下声明工作流创建完成"
+
+# 资源限额配置
+resource_limits:
+  max_parallel_agents: 4
+  max_retries_per_stage: 3
+  max_validation_loops: 10
+
+# 运行契约（支撑完整运行测试）
+runtime_contract:
+  # 允许写入路径边界（相对各 root）
+  write_boundaries:
+    target_root_allow:
+      - ".claude/**"
+      - ".workflowprogram/**"
+    run_root_allow:
+      - "context.json"
+      - "state.json"
+      - "events.jsonl"
+      - "workflow-*.md"
+      - "workflow-view.md"
+      - "transcript.md"
+      - "validation-runtime-report.md"
+      - "outputs/**"
+    temp_root_allow:
+      - "**"
+    deny:
+      - "**/.git/**"
+      - "**/node_modules/**"
+
+  # 最小运行证据集（必须保留）
+  required_evidence:
+    - "context.json"
+    - "state.json"
+    - "events.jsonl"
+    - "outputs/progress/current-progress.json"
+    - "outputs/progress/milestones.jsonl"
+    - "outputs/progress/user-progress.md"
+    - "outputs/stages/s0-route.json"
+    - "outputs/stages/runner-summary.json"
+
+  # 失败类别枚举（运行态必须从这里取值）
+  failure_kinds:
+    - none
+    - design
+    - implementation
+    - environment
+    - conflict
+
+  # 环境 skip 条件（命中后输出 ENVIRONMENT-SKIP）
+  environment_skip:
+    - code: RUNTIME_HOST_MISSING
+      check: runtime_host_available
+      message: "运行宿主不可用，跳过运行态验证"
+    - code: TARGET_NOT_WRITABLE
+      check: target_root_writable
+      message: "TARGET_ROOT 无写权限，跳过运行态验证"
+    - code: RUNTIME_HOST_NOT_READY
+      check: runtime_host_ready
+      message: "运行宿主未就绪，跳过运行态验证"
+
+generated_runtime_contract:
+  runtime_root: .workflowprogram/runtime
+  design_spec_path: .workflowprogram/design/workflow-spec.yaml
+  entry_script: .workflowprogram/runtime/workflow-entry.py
+  runner_script: .workflowprogram/runtime/workflow-runner.py
+  state_validator_script: .workflowprogram/runtime/validate-run-state.py
+  runtime_manifest: .workflowprogram/runtime/runtime-manifest.json
+  run_root_dir: .workflowprogram/runs
+  mode: shared-control-plane-wrapper
+  runtime_capabilities:
+    - state_transitions
+    - run_state_validation
+
+# 测试契约（支撑基础运行测试判定；引用 runtime_contract，不复制执行约束）
+test_contract:
+  entry:
+    main_entry: example
+    entry_type: slash_command
+    required_args:
+      - "$ARGUMENTS"
+    missing_arg_verdict: FAIL
+    invalid_entry_verdict: FAIL
+
+  boundary:
+    write_boundaries_ref: runtime_contract.write_boundaries
+    managed_overwrite_policy: reject-unmanaged-overwrite
+    conflict_expectation: keep-candidate-and-report
+    external_write_policy: deny
+
+  flow:
+    required_stages:
+      - requirement
+      - context
+      - design
+      - generate
+      - validate
+      - lessons
+    skippable_stages: []
+    failure_recovery:
+      design: design
+      implementation: generate
+    terminal_conditions:
+      PASS: done
+      WARN: blocked
+      FAIL: failed
+      ENVIRONMENT-SKIP: done
+
+  artifacts:
+    deliverables:
+      - .claude/settings.json
+      - .claude/rules/constraints.md
+      - .workflowprogram/design/workflow-spec.yaml
+      - .workflowprogram/design/workflow-view.md
+      - .workflowprogram/design/workflow-maintenance.md
+      - .workflowprogram/runtime/workflow-entry.py
+      - .workflowprogram/runtime/workflow-runner.py
+      - .workflowprogram/runtime/validate-run-state.py
+      - .workflowprogram/runtime/runtime-manifest.json
+      - .workflowprogram/managed-files.json
+    evidence_ref: runtime_contract.required_evidence
+    optional_outputs:
+      - .claude/commands/*.md
+
+  failure:
+    failure_kinds_ref: runtime_contract.failure_kinds
+    environment_skip_ref: runtime_contract.environment_skip
+    # 仅用于测试期望；不得反向改变 runner verdict / failure_kind 语义
+    implemented_now:
+      - none
+      - environment

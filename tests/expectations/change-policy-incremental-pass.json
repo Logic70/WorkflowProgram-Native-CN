@@ -1,0 +1,22 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "PASS"
+  ],
+  "required_files": [
+    "outputs/stages/route-intent.json",
+    "outputs/stages/change-context.json",
+    "outputs/stages/existing-workflow-readback.json",
+    "outputs/stages/change-policy.json",
+    "outputs/stages/impact-analysis.json",
+    "outputs/stages/validate-change-policy.json",
+    "outputs/managed-change-plan.json",
+    "outputs/managed-change-result.json",
+    "validation-runtime-report.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

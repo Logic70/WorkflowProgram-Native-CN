@@ -1,0 +1,20 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-audit",
+    "workflowprogram-iterate"
+  ],
+  "acceptable_results": [
+    "PASS",
+    "ENVIRONMENT-SKIP"
+  ],
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

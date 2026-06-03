@@ -1,0 +1,4 @@
+interface:
+  display_name: "WorkflowProgram Low-Level Design"
+  short_description: "细化 WorkflowProgram 与 Native Workflow JS 的可实施详细设计契约"
+  default_prompt: "使用 $workflowprogram-lowlevel-design 根据当前 WorkflowProgram 高层架构整理可直接实施和验证的详细设计。"

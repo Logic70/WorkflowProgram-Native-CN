@@ -1,0 +1,14 @@
+{
+  "allowed_entry_skills": ["workflowprogram-publish"],
+  "acceptable_results": ["FAIL"],
+  "required_files": [
+    "outputs/stages/publish/publish-eligibility.json",
+    "outputs/stages/publish/marketplace-resolution.json",
+    "outputs/stages/publish/marketplace-merge-plan.json",
+    "outputs/stages/publish/marketplace-validation-report.json",
+    "outputs/stages/publish/github-publish-plan.json",
+    "outputs/stages/publish/github-publish-result.json",
+    "outputs/stages/publish/publish-summary.json"
+  ],
+  "forbidden_patterns": ["Traceback (most recent call last):"]
+}

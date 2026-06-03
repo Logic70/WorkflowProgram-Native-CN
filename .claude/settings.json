@@ -1,0 +1,103 @@
+{
+  "commands": {
+    "develop": {
+      "description": "Design a new workflow from requirements",
+      "file": ".claude/commands/develop.md"
+    },
+    "ship": {
+      "description": "Ship current workflow changes",
+      "file": ".claude/commands/ship.md"
+    },
+    "preflight": {
+      "description": "Run parallel readiness checks before shipping",
+      "file": ".claude/commands/preflight.md"
+    },
+    "hotfix": {
+      "description": "Fast-track a hotfix with reduced scope",
+      "file": ".claude/commands/hotfix.md"
+    },
+    "evolve-workflow": {
+      "description": "Audit and evolve a workflow repository",
+      "file": ".claude/commands/evolve-workflow.md"
+    },
+    "iterate-workflow": {
+      "description": "Iterate a workflow from lessons with approval",
+      "file": ".claude/commands/iterate-workflow.md"
+    },
+    "workflowprogram-publish": {
+      "description": "Publish a completed target workflow as a Claude Code marketplace plugin",
+      "file": ".claude/commands/workflowprogram-publish.md"
+    }
+  },
+  "skills": {
+    "review": {
+      "description": "Run parallel multi-agent review on current changes",
+      "file": ".claude/skills/review/SKILL.md"
+    },
+    "test": {
+      "description": "Run validation or tests related to current changes",
+      "file": ".claude/skills/test/SKILL.md"
+    },
+    "commit": {
+      "description": "Generate a conventional commit message",
+      "file": ".claude/skills/commit/SKILL.md"
+    },
+    "doc": {
+      "description": "Update documentation for changed workflow assets",
+      "file": ".claude/skills/doc/SKILL.md"
+    },
+    "highlevel-design": {
+      "description": "Create, restructure, compare, or review High-Level Design documents",
+      "file": ".claude/skills/highlevel-design/SKILL.md"
+    },
+    "lowlevel-design": {
+      "description": "Create, restructure, compare, or review Low-Level Design documents",
+      "file": ".claude/skills/lowlevel-design/SKILL.md"
+    },
+    "workflow-audit": {
+      "description": "Audit workflow structure patterns and quality",
+      "file": ".claude/skills/workflow-audit/SKILL.md"
+    },
+    "validate-file": {
+      "description": "Validate workflow file format and constraints",
+      "file": ".claude/skills/validate-file/SKILL.md",
+      "internal": true
+    },
+    "workflowprogram-orchestrate": {
+      "description": "Automatically route natural-language current-project workflow requests; 普通用户直接描述设计、审计、迭代、验证需求即可，显式 slash command 仅用于调试和兜底",
+      "file": ".claude/skills/workflowprogram-orchestrate/SKILL.md"
+    },
+    "workflowprogram-develop": {
+      "description": "Design or update workflow assets for the current target project",
+      "file": ".claude/skills/workflowprogram-develop/SKILL.md"
+    },
+    "workflowprogram-native-develop": {
+      "description": "Internal Native authoring leaf selected by workflowprogram-orchestrate, or direct entry when the user explicitly requests Claude Code Native Workflow JS",
+      "file": ".claude/skills/workflowprogram-native-develop/SKILL.md"
+    },
+    "workflowprogram-highlevel-design": {
+      "description": "Create, restructure, compare, or review WorkflowProgram High-Level Design documents",
+      "file": ".claude/skills/workflowprogram-highlevel-design/SKILL.md"
+    },
+    "workflowprogram-lowlevel-design": {
+      "description": "Create, restructure, compare, or review WorkflowProgram Low-Level Design documents",
+      "file": ".claude/skills/workflowprogram-lowlevel-design/SKILL.md"
+    },
+    "workflowprogram-audit": {
+      "description": "Audit workflow assets in the current target project",
+      "file": ".claude/skills/workflowprogram-audit/SKILL.md"
+    },
+    "workflowprogram-iterate": {
+      "description": "Generate workflow improvement proposals from lessons and current state",
+      "file": ".claude/skills/workflowprogram-iterate/SKILL.md"
+    },
+    "workflowprogram-validate": {
+      "description": "Validate workflow assets in the current target project at workflow scope",
+      "file": ".claude/skills/workflowprogram-validate/SKILL.md"
+    },
+    "workflowprogram-publish": {
+      "description": "Publish a completed WorkflowProgram-generated target workflow as a Claude Code marketplace plugin",
+      "file": ".claude/skills/workflowprogram-publish/SKILL.md"
+    }
+  }
+}

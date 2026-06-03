@@ -1,0 +1,21 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-audit"
+  ],
+  "acceptable_results": [
+    "PASS"
+  ],
+  "required_files": [
+    "context.json",
+    "state.json",
+    "events.jsonl",
+    "transcript.md",
+    "validation-runtime-report.md",
+    "outputs/stages/team-plan.json",
+    "outputs/stages/team-results.json",
+    "outputs/stages/team-join-summary.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

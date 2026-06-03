@@ -1,0 +1,22 @@
+{
+  "name": "workflowprogram-native-cn",
+  "version": "0.1.0",
+  "description": "Native Workflow JS control-plane toolkit for Claude Code workflow development",
+  "author": {
+    "name": "Logic_70",
+    "email": "zjmp8870@outlook.com"
+  },
+  "homepage": "https://github.com/Logic70/WorkflowProgram-Native-CN",
+  "repository": "https://github.com/Logic70/WorkflowProgram-Native-CN",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "workflow",
+    "plugin",
+    "commands",
+    "skills",
+    "agents",
+    "audit",
+    "automation"
+  ]
+}

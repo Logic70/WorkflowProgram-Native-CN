@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WorkflowProgram 101 — Designing Workflows As Products</title>
+    <meta
+      name="description"
+      content="WorkflowProgram 101: a practical guide to turning workflows into deliverable, verifiable, and iterable products."
+    />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-kicker">WorkflowProgram 101</div>
+          <h1>Design workflows as products, not prompt bundles.</h1>
+          <p>
+            A practical guide built around the current WorkflowProgram implementation.
+            Start from common workflow failure modes, then move toward a reusable design method.
+          </p>
+        </div>
+
+        <nav class="toc" aria-label="Table of contents">
+          <a href="#hero">Start</a>
+          <a href="#problem-matrix">Common Failure Modes</a>
+          <a href="#philosophy">Four-Layer Philosophy</a>
+          <a href="#three-roots">Three Roots</a>
+          <a href="#stage-model">Stage Model</a>
+          <a href="#logic-interview">Requirement Logic Interview</a>
+          <a href="#orchestration">Main Orchestration Chain</a>
+          <a href="#routing">Entry Routing</a>
+          <a href="#managed-apply">Managed Apply</a>
+          <a href="#validation">Validation Loop</a>
+          <a href="#lessons">Lessons And Constraints</a>
+          <a href="#files">Repository Layout</a>
+          <a href="#quickstart">Quick Start</a>
+          <a href="#chapters">Chapter Guide</a>
+        </nav>
+
+        <div class="source-links">
+          <div class="source-title">Resources</div>
+          <a href="./index.html">中文 HTML 教程</a>
+          <a href="../../README.en.md">README (English)</a>
+          <a href="../../README.md">README (中文)</a>
+          <a href="../workflowprogram-101-en/index.md">English Chapter Guide</a>
+          <a href="../workflowprogram-101.en.md">English Single-page Overview</a>
+          <a href="../workflowprogram-101/index.md">中文章节教程</a>
+          <a href="../workflowprogram-design-status.md">Design Status Index</a>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="hero panel" id="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Built for Claude Code workflow authors</p>
+            <h2>Running once is easy. Running well over time is the hard part.</h2>
+            <p class="hero-lead">
+              Many workflows look impressive for the first few runs. Then the familiar problems appear:
+              target files get overwritten, steps get skipped, failures cannot be replayed, and lessons never feed into the next run.
+            </p>
+            <p class="hero-lead">
+              WorkflowProgram exists to solve those engineering problems directly. It treats a workflow as a product with a truth source, a control plane, a validation layer, and a feedback loop.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="#problem-matrix">Start with the problems</a>
+              <a class="button secondary" href="#quickstart">Jump to quick start</a>
+            </div>
+          </div>
+
+          <div class="hero-visual">
+            <div class="visual-card">
+              <span class="visual-label">One complete run</span>
+              <div class="chip-flow">
+                <span>request</span>
+                <span>spec</span>
+                <span>candidate</span>
+                <span>managed apply</span>
+                <span>run</span>
+                <span>verdict</span>
+                <span>lessons</span>
+              </div>
+            </div>
+            <div class="visual-card accent">
+              <span class="visual-label">The four core beliefs</span>
+              <ul>
+                <li>Use one machine-readable source of truth</li>
+                <li>Separate design, execution, judgment, and feedback</li>
+                <li>Never write directly into the target project without control</li>
+                <li>Every run must leave structured evidence behind</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="problem-matrix">
+          <div class="section-heading">
+            <p class="eyebrow">Step 1: See the failure modes</p>
+            <h2>Eight workflow problems WorkflowProgram is designed to solve</h2>
+          </div>
+
+          <div class="matrix-grid">
+            <article class="matrix-card">
+              <h3>No single truth source</h3>
+              <p>Semantics drift across docs, prompts, and implementation.</p>
+              <div class="answer">Response: converge on one machine-readable truth source first.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Order depends on model memory</h3>
+              <p>One run follows the intended sequence, the next skips or repeats steps.</p>
+              <div class="answer">Response: move critical sequencing into deterministic programs.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Direct writes damage the target project</h3>
+              <p>Conflicts are hard to recover and user-maintained files get overwritten.</p>
+              <div class="answer">Response: generate candidates first, then apply changes in a managed way.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Failures are hard to localize</h3>
+              <p>You know the run failed, but not whether design, execution, or judgment was wrong.</p>
+              <div class="answer">Response: split design, execution, judgment, and evidence capture into different layers.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Evidence is incomplete</h3>
+              <p>There is no state, event, or report trail to replay what happened.</p>
+              <div class="answer">Response: persist a minimum structured evidence bundle for every run.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Validation only checks exit codes</h3>
+              <p>"Finished" is treated as "correct".</p>
+              <div class="answer">Response: separate runtime constraints, test constraints, and final verdict logic.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Lessons never feed back</h3>
+              <p>The same mistakes repeat because they live only in chat history.</p>
+              <div class="answer">Response: separate per-run lessons from long-lived constraints.</div>
+            </article>
+            <article class="matrix-card">
+              <h3>Natural-language entry is unstable</h3>
+              <p>Similar requests route to different skills and produce different behavior.</p>
+              <div class="answer">Response: detect intent and route before entering the main flow.</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="philosophy">
+          <div class="section-heading">
+            <p class="eyebrow">Step 2: Understand the design</p>
+            <h2>A workflow is not one big prompt. It is four layers with different jobs.</h2>
+          </div>
+
+          <div class="stack-grid">
+            <article class="stack-card">
+              <span class="stack-index">01</span>
+              <h3>Truth Source</h3>
+              <p>Behavior starts from one machine-readable source of truth. Human-facing guides come later.</p>
+            </article>
+            <article class="stack-card">
+              <span class="stack-index">02</span>
+              <h3>Control Plane</h3>
+              <p>Programs own transitions, boundaries, and evidence. The model works inside steps, not between them.</p>
+            </article>
+            <article class="stack-card">
+              <span class="stack-index">03</span>
+              <h3>Validation Layer</h3>
+              <p>The generator should not be its own judge. Verdicts are produced independently from evidence.</p>
+            </article>
+            <article class="stack-card">
+              <span class="stack-index">04</span>
+              <h3>Feedback Loop</h3>
+              <p>Per-run lessons and long-lived rules are different things. Both are needed.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="three-roots">
+          <div class="section-heading">
+            <p class="eyebrow">Step 3: Draw the boundaries</p>
+            <h2>Why `PLUGIN_ROOT`, `TARGET_ROOT`, and `RUN_ROOT` must stay separate</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>`PLUGIN_ROOT`</h3>
+              <p>The source of capabilities: skills, scripts, templates, and plugin payloads.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`TARGET_ROOT`</h3>
+              <p>The user project that receives the final `.claude/` assets.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`RUN_ROOT`</h3>
+              <p>The isolated workspace for one run: context, state, events, reports, and candidates.</p>
+            </article>
+          </div>
+
+          <div class="note-strip">
+            <strong>Why this matters</strong>
+            <span>Without these boundaries, you cannot tell what was input, what was output, and what was evidence.</span>
+          </div>
+        </section>
+
+        <section class="panel" id="stage-model">
+          <div class="section-heading">
+            <p class="eyebrow">Step 4: Split responsibilities</p>
+            <h2>The `S0..S6` model separates route, design, apply, validation, and learning</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>`S0-S3`</h3>
+              <p>Route the request, clarify requirements, explore context, and settle the machine-readable design.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`S4-S5`</h3>
+              <p>Generate candidate assets, apply them safely, and validate the workflow verdict independently.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`S6`</h3>
+              <p>Turn the run into lessons, constraint candidates, and the next improvement direction.</p>
+            </article>
+          </div>
+
+          <div class="note-strip">
+            <strong>One important detail:</strong>
+            <span>`S0` is the universal route layer. The minimum required path through `S1-S6` is declared by `intent_flows`: the default template uses `develop=S1-S6`, `audit=S5-S6`, `validate=S5 (+ optional S6)`, and `iterate=S6 (+ optional S5)`.</span>
+          </div>
+        </section>
+
+        <section class="panel" id="logic-interview">
+          <div class="section-heading">
+            <p class="eyebrow">Step 4b: Ask deeper questions</p>
+            <h2>S1 now uses seven logic lenses before a request becomes design-ready</h2>
+          </div>
+
+          <p style="color:var(--muted);max-width:72ch;margin:8px 0 0">
+            Requirement clarification is not just asking for inputs, outputs, and edge cases.
+            WorkflowProgram turns the original request into a designable and verifiable logic model.
+            If a complex request only has generic questions, <code>validate-workflow-draft.py</code> blocks it from entering S2/S3.
+          </p>
+
+          <div class="matrix-grid">
+            <article class="matrix-card"><h3>purpose</h3><p>Why the workflow exists, who uses the result, and what success means.</p></article>
+            <article class="matrix-card"><h3>object_model</h3><p>Input objects, intermediate objects, output objects, and source-of-truth rules.</p></article>
+            <article class="matrix-card"><h3>process_model</h3><p>Business steps, candidate nodes, and human touchpoints.</p></article>
+            <article class="matrix-card"><h3>decision_model</h3><p>Branches, strategies, thresholds, confidence, and approval points that change execution.</p></article>
+            <article class="matrix-card"><h3>evidence_model</h3><p>Evidence required to trust intermediate artifacts, decisions, and final outputs.</p></article>
+            <article class="matrix-card"><h3>acceptance_model</h3><p>Positive, negative, and ambiguous scenarios that prove the workflow is useful.</p></article>
+            <article class="matrix-card"><h3>boundary_model</h3><p>When the workflow must stop, degrade, defer, or stay out of scope.</p></article>
+          </div>
+
+          <div class="note-strip">
+            <strong>New evidence:</strong>
+            <span><code>question-backlog.json</code> records why each question changes design; <code>requirement-logic-map.json</code> links <code>REQ-*</code> items to process / evidence / acceptance elements.</span>
+          </div>
+
+          <div class="note-strip">
+            <strong>Complex node design:</strong>
+            <span>Complex, loop-enabled, tool-heavy, reverse-engineering/security, or multi-downstream nodes need <code>target-node-designs/&lt;node-id&gt;.md</code>. It must align with <code>workflow_graph.nodes[*]</code> owner, template, gate, inputs, outputs, and loop policy, and is checked by <code>validate-target-node-design.py</code> plus S5.</span>
+          </div>
+          <div class="note-strip">
+            <strong>Target executor:</strong>
+            <span>The generated target runtime no longer assumes <code>claude -p</code> exists. <code>target_executor_policy</code> chooses an automatic provider, or requires <code>current_agent/manual</code> executor evidence per node before the finalizer can publish; required reports and workflow graph refs must not point at finalizer-owned manifests/latest markers, and <code>validate-target-publish-state.py</code> rejects hand-written COMPLETE manifests and stale latest markers.</span>
+          </div>
+        </section>
+
+        <section class="panel" id="orchestration">
+          <div class="section-heading">
+            <p class="eyebrow">Step 5: Make sequencing deterministic</p>
+            <h2>The main orchestration chain is a product entry flow, not a loose instruction sheet</h2>
+          </div>
+
+          <div class="loop-layout">
+            <article class="loop-card">
+              <h3>Entry layer</h3>
+              <p>Defines the fixed order of checks and execution steps.</p>
+            </article>
+            <article class="loop-card">
+              <h3>Control layer</h3>
+              <p>Advances state, enforces runtime constraints, and persists evidence.</p>
+            </article>
+            <article class="loop-card">
+              <h3>Validation layer</h3>
+              <p>Consumes evidence and gives the workflow-level verdict.</p>
+            </article>
+          </div>
+
+          <div class="note-strip">
+            <strong>Current mapping</strong>
+            <span>`workflow-entry.py` sequences the product chain. `workflow-runner.py` governs WorkflowProgram S0-S6. `target-workflow-runner.py` governs generated target `workflow_graph` execution with `target_executor_policy`. `target-runtime-finalizer.py` publishes current-run target outputs atomically, and `validate-target-publish-state.py` checks the final published directory. `workflowprogram-validate` and `workflow-s5-judge.py` produce the verdict.</span>
+          </div>
+
+          <div class="note-strip">
+            <strong>What the entry path actually covers now</strong>
+            <span>It renders spec/view/lowlevel/runtime assets, applies managed writes, optionally runs capability discovery and host bootstrap, generates remediation guidance, then enters the runner.</span>
+          </div>
+        </section>
+
+        <section class="panel" id="routing">
+          <div class="section-heading">
+            <p class="eyebrow">Step 6: Route before acting</p>
+            <h2>Entry routing is about choosing the main flow first, then leaving evidence for that choice</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>The design problem</h3>
+              <p>Similar natural-language requests should not unpredictably land on different flows.</p>
+            </article>
+            <article class="compare-card">
+              <h3>The current implementation</h3>
+              <p>`workflowprogram-orchestrate` plus `route-intent.py` decide the intent and preserve route evidence before execution proceeds.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="publish">
+          <div class="section-heading">
+            <p class="eyebrow">Step 6b: Publish completed workflows</p>
+            <h2>Publishing is independent from develop</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>Publish boundary</h3>
+              <p>A target workflow must fully pass develop before it can be packaged as a Claude Code marketplace plugin.</p>
+            </article>
+            <article class="compare-card">
+              <h3>Current mapping</h3>
+              <p><code>/workflowprogram-cn:workflowprogram-publish</code> checks develop evidence, stages a plugin package, validates it, and uses the user's GitHub account for the publish plan or approved execution.</p>
+              <p>Use <code>--repo-mode existing_marketplace --repo-path &lt;checkout&gt;</code> to reuse an existing marketplace. The plugin is merged under <code>plugins/&lt;plugin-id&gt;/</code>, and same-name entries are never overwritten silently.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="managed-apply">
+          <div class="section-heading">
+            <p class="eyebrow">Step 7: Control target writes</p>
+            <h2>Generated output and target-project writes are different operations</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>Safer pattern</h3>
+              <p>Generate candidates first, classify changes, then apply them in a managed way.</p>
+            </article>
+            <article class="compare-card">
+              <h3>Current mapping</h3>
+              <p>`RUN_ROOT/outputs/candidate/`, `managed-change-plan.json`, `managed-change-result.json`, and `managed-files.json` preserve ownership and conflict evidence.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="validation">
+          <div class="section-heading">
+            <p class="eyebrow">Step 8: Separate validation from generation</p>
+            <h2>WorkflowProgram validates in layers</h2>
+          </div>
+
+          <div class="stack-grid">
+            <article class="stack-card">
+              <span class="stack-index">01</span>
+              <h3>Execution constraints</h3>
+              <p>May the run proceed in this form? Boundaries, enums, minimum evidence, and runtime rules live here.</p>
+            </article>
+            <article class="stack-card">
+              <span class="stack-index">02</span>
+              <h3>Verdict</h3>
+              <p>Does this run actually count as passing? This checks flow, artifacts, boundaries, and failure mapping.</p>
+            </article>
+            <article class="stack-card">
+              <span class="stack-index">03</span>
+              <h3>Dynamic evidence</h3>
+              <p>Did a real run leave enough evidence to support the verdict?</p>
+            </article>
+          </div>
+
+          <div class="note-strip">
+            <strong>Optional evidence layers also exist</strong>
+            <span>If the workflow declares external capabilities or an explicit team contract, validation also consumes capability reports, remediation guidance, and team fan-out / join evidence.</span>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>Code and release gates</h3>
+              <pre><code>python3 .claude/scripts/quality-gate.py commit
+python3 .claude/scripts/quality-gate.py integration
+python3 .claude/scripts/quality-gate.py release</code></pre>
+              <p>Commit gates stay fast; release gates still validate build output, version consistency, repository checks, plugin bootstrap, and smoke matrix.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="lessons">
+          <div class="section-heading">
+            <p class="eyebrow">Step 9: Feed the next run</p>
+            <h2>Lessons and constraints turn one run into future stability</h2>
+          </div>
+
+          <div class="compare-grid">
+            <article class="compare-card">
+              <h3>`lessons.md`</h3>
+              <p>Append-only history of failures, conflicts, and candidate constraints.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`constraints.md`</h3>
+              <p>Long-lived ALWAYS/NEVER rules that new sessions can load directly.</p>
+            </article>
+            <article class="compare-card">
+              <h3>`s6-lessons-delta.md`</h3>
+              <p>The per-run delta that turns evidence into reusable guidance.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="files">
+          <div class="section-heading">
+            <p class="eyebrow">Step 10: Read the repository with the right map</p>
+            <h2>The repository layout mirrors the product model</h2>
+          </div>
+
+          <div class="file-map">
+            <article class="file-card">
+              <h3>`README.md` / `README.en.md`</h3>
+              <p>High-level orientation and quick-start usage.</p>
+            </article>
+            <article class="file-card">
+              <h3>`docs/`</h3>
+              <p>Design truth sources, plans, and tutorials.</p>
+            </article>
+            <article class="file-card">
+              <h3>`.claude/scripts/`</h3>
+              <p>Deterministic execution, validation, and control-plane tools.</p>
+            </article>
+            <article class="file-card">
+              <h3>`TARGET_ROOT/.workflowprogram/design/`</h3>
+              <p>The persisted design package: spec, view, and lowlevel guidance.</p>
+            </article>
+            <article class="file-card">
+              <h3>`TARGET_ROOT/.workflowprogram/runtime/`</h3>
+              <p>The target-side deterministic runtime wrapper bundle.</p>
+            </article>
+            <article class="file-card">
+              <h3>`tools/`</h3>
+              <p>Build and smoke-test tooling, including runtime harnesses.</p>
+            </article>
+            <article class="file-card">
+              <h3>`tests/`</h3>
+              <p>Fixtures, expectations, and runtime transcripts.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="quickstart">
+          <div class="section-heading">
+            <p class="eyebrow">Step 11: Start using it</p>
+            <h2>Quick start in four commands</h2>
+          </div>
+
+          <pre><code>git clone https://github.com/Logic70/WorkflowProgram-CN
+cd WorkflowProgram-CN
+pip install pyyaml
+python tools/build_plugin.py</code></pre>
+
+          <pre><code>cd your-project
+claude --plugin-dir /path/to/WorkflowProgram-CN/dist/plugin</code></pre>
+
+          <pre><code>"Design a code review workflow for this project"
+"Audit the workflow structure of this project"
+"Validate the workflow assets in this project"</code></pre>
+
+          <div class="note-strip">
+            <strong>If your workflow depends on external tools</strong>
+            <span>The first run will generate capability recommendations, host probe results, and remediation guidance before declaring a final verdict.</span>
+          </div>
+        </section>
+
+        <section class="panel" id="chapters">
+          <div class="section-heading">
+            <p class="eyebrow">Step 12: Go deeper</p>
+            <h2>Read the chapter guide when you want the full explanation</h2>
+          </div>
+
+          <div class="chapter-grid">
+            <article class="chapter-card">
+              <h3>English chapter guide</h3>
+              <p>Read the full tutorial in chapter form, from failure modes to applying the pattern in your own project.</p>
+              <a class="button secondary" href="../workflowprogram-101-en/index.md">Open English chapters</a>
+            </article>
+            <article class="chapter-card">
+              <h3>Chinese chapter guide</h3>
+              <p>Switch back to the Chinese version if you want the original tutorial wording and examples.</p>
+              <a class="button secondary" href="../workflowprogram-101/index.md">Open Chinese chapters</a>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

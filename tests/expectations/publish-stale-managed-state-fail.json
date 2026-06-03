@@ -1,0 +1,15 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-publish"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "required_files": [
+    "outputs/stages/publish/publish-eligibility.json",
+    "outputs/stages/publish/publish-summary.json"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}

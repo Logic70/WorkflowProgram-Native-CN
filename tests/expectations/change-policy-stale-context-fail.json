@@ -1,0 +1,22 @@
+{
+  "allowed_entry_skills": [
+    "workflowprogram-develop"
+  ],
+  "acceptable_results": [
+    "FAIL"
+  ],
+  "expected_category": "S5_ARTIFACTS_CHANGE_POLICY_SCHEMA_VALID",
+  "required_files": [
+    "outputs/stages/route-intent.json",
+    "outputs/stages/change-context.json",
+    "outputs/stages/change-context-current.json",
+    "outputs/stages/change-policy.json",
+    "outputs/stages/impact-analysis.json",
+    "outputs/stages/validate-change-policy.json",
+    "outputs/stages/entry-orchestration-summary.json",
+    "validation-runtime-report.md"
+  ],
+  "forbidden_patterns": [
+    "Traceback (most recent call last):"
+  ]
+}
