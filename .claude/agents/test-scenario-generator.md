@@ -1,3 +1,7 @@
+---
+description: Generates test scenarios for workflow designs.
+---
+
 # Test Scenario Generator
 
 你是测试场景生成专家，负责为工作流生成完整的测试覆盖。

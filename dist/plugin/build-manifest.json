@@ -1,11 +1,11 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-03T08:01:27Z",
+  "generated_at": "2026-06-03T08:33:00Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.0",
-  "source_commit": null,
-  "source_dirty": null,
+  "source_commit": "54116dab4d78f5b5789eb222883136efe0d87351",
+  "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
@@ -24,48 +24,48 @@
     },
     {
       "path": "agents/logic-reviewer.md",
-      "sha256": "d7c9dc26cda40e6cc01e3b07eeb676ccdd03e51828c9256ae7dead311ed722f1",
-      "size": 1251
+      "sha256": "6b076ec9b210a35096827ada3fbcbc9611f2d052d9a4f46c86340bbd2571eea1",
+      "size": 1333
     },
     {
       "path": "agents/performance-reviewer.md",
-      "sha256": "c15910478156540e5e3a35ba30dd9d645e629c973ff70287411f0f907b95fd55",
-      "size": 1041
+      "sha256": "58163cf1bf88551988e28fe05fe124361999244764c4766ce56d2940a3155486",
+      "size": 1117
     },
     {
       "path": "agents/security-reviewer.md",
-      "sha256": "e12fcae92cc933af9aa2f4818f4491f71a1f384be0b3ab77db8ada6ff4377593",
-      "size": 1185
+      "sha256": "e2dc91762a1d9de883aa96c24edd3fb6e62e0f753554383bf0b1a1d8227e9576",
+      "size": 1258
     },
     {
       "path": "agents/style-reviewer.md",
-      "sha256": "bace4c01a70a398181e0ae684788f2901f87c476881c8968ddd55e1e5d31cb1c",
-      "size": 1017
+      "sha256": "fb69c93e13ddd8e90862f800869b660f9ea59b4ff9b0802aaa9578d782f9c87e",
+      "size": 1099
     },
     {
       "path": "agents/test-scenario-generator.md",
-      "sha256": "cf302c6b162216175c107fb428e53dc79011b9c15bb089b6746ac108e039da18",
-      "size": 2867
+      "sha256": "9c9395e1548ecdc89658068a458ac7a69b7e4f891f7229dd68d9606e83ada2b3",
+      "size": 2936
     },
     {
       "path": "agents/workflow-design-reviewer.md",
-      "sha256": "913ccb69cb888c5bee465a74cbf549d3c69f9ad3fc8f26a4ba7534b81b4142d9",
-      "size": 3189
+      "sha256": "edef8f5ee306fa6b442c8a3720d3d66ee17480787edcca72b027a9da2967d850",
+      "size": 3289
     },
     {
       "path": "agents/workflow-designer.md",
-      "sha256": "718a5663805600c87fcad36e380618d6f4b2f90477ab908198796e87757857d8",
-      "size": 1899
+      "sha256": "ab22fcfce9d7bff1f00127b6d23c8a0beb5af75eb8dc673e1a3b84a9a12da99c",
+      "size": 1988
     },
     {
       "path": "agents/workflow-validator.md",
-      "sha256": "192c8f2a8697d7570bea3f7faccb8c4047d58f54c464fbbd0c0af8ac15ac6ff7",
-      "size": 1624
+      "sha256": "07d02130f4dbb957d27777f857f3230b214edcf265685beeaab8ed1738cf39f9",
+      "size": 1714
     },
     {
       "path": "agents/workflow-verifier.md",
-      "sha256": "24b5ff2fd94eecdfba28fcafa57ba9ca5755be1ca2aebfc64b76d0c7ca1f835b",
-      "size": 4521
+      "sha256": "a90cd9bdaaa3522ed28e3fd4f03b36b677cc3a2a07dac3d96007fc53997d7d6f",
+      "size": 4592
     },
     {
       "path": "bin/workflowprogram-clean",
@@ -84,38 +84,38 @@
     },
     {
       "path": "commands/develop.md",
-      "sha256": "e7f67f5e68e064e49e2df28c96613939f9426c8dec6470abd4bca632d9d25260",
-      "size": 21789
+      "sha256": "57034b4d8c00845bd32e4c8beea53ffbe44bb0de49e7e8bd6723bbfe1a4d79c0",
+      "size": 21793
     },
     {
       "path": "commands/evolve-workflow.md",
-      "sha256": "753e70375af0c0e8ae1d9f6c3fab51d7f5a5d5ac2d4c68764e33eb29fe043794",
-      "size": 5133
+      "sha256": "68374cfd46fc482bef2a98225d104a7d8672826354fff9b17b7b9dd9587b24b2",
+      "size": 5137
     },
     {
       "path": "commands/hotfix.md",
-      "sha256": "bc24e40564d7e0ff892eca453ad64e27742031853ea18aa600bd05c3ea5962cd",
-      "size": 2766
+      "sha256": "bc3b98d489244cbebabba7c56c56257008feb732f24b2bb677d042db21df9a2e",
+      "size": 2770
     },
     {
       "path": "commands/iterate-workflow.md",
-      "sha256": "5984aadfce63ccf28d61e27e5d6eb049b30bb7b6fbccd3658f2e7edb42e03cca",
-      "size": 4041
+      "sha256": "4ef882e1f07400a33922fbd43e24cca464239a889710a1e1d1fd5e009621a67b",
+      "size": 4045
     },
     {
       "path": "commands/preflight.md",
-      "sha256": "9bdcefb27f3faf58d8d4b2b8d657bd33aee16a489d4ec864d754cd927792b99f",
-      "size": 2612
+      "sha256": "2255209eafe67209f9ef07a752aec86486297e5b7bb2dae3904c7a24b2b15db9",
+      "size": 2616
     },
     {
       "path": "commands/ship.md",
-      "sha256": "34a2d4947f88f52a2b22b77ec5517ca124059bd443ab883cf7455e7f7cc55f11",
-      "size": 4097
+      "sha256": "5994c4f4de918e76c6481c2098d5fd31b8bdbb99a27a691e581fb764c8452035",
+      "size": 4101
     },
     {
       "path": "commands/workflowprogram-publish.md",
-      "sha256": "b76411cedf07573c5c907743898cb0c441a0b6937583e926c64dc241dcb20eeb",
-      "size": 2768
+      "sha256": "6ab3786a158b8f7096c0f93f654f6ea747778111ed82447e396ef1b378096154",
+      "size": 2772
     },
     {
       "path": "hooks/hooks.json",
@@ -494,8 +494,8 @@
     },
     {
       "path": "scripts/validate-workflow.py",
-      "sha256": "4a7e231209c7bb0d57c5f5b9eda685cb2652896148c6a6ec85ee36edff08f825",
-      "size": 67160
+      "sha256": "8b55a9b6327ef374dc2fdae6e324b437363fbdf50cba33eab6835c8b9ce9915a",
+      "size": 67282
     },
     {
       "path": "scripts/verify-plugin-load.sh",

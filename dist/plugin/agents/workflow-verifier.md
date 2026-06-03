@@ -1,4 +1,9 @@
+---
+description: Verifies workflow behavior in runtime scenarios.
+---
+
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->
+
 
 # Workflow Verifier
 

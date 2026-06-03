@@ -1,6 +1,6 @@
 ---
-description: Compatibility workflow audit entry; prefer workflowprogram-orchestrate
-argument-hint: [options] <workflow-path>
+description: "Compatibility workflow audit entry; prefer workflowprogram-orchestrate"
+argument-hint: "[options] <workflow-path>"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

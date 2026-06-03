@@ -1,6 +1,6 @@
 ---
-description: Compatibility workflow design entry; prefer workflowprogram-orchestrate
-argument-hint: <requirement> [--auto-approve]
+description: "Compatibility workflow design entry; prefer workflowprogram-orchestrate"
+argument-hint: "<requirement> [--auto-approve]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

@@ -1,6 +1,6 @@
 ---
-description: Repository preflight compatibility command
-argument-hint: [scope]
+description: "Repository preflight compatibility command"
+argument-hint: "[scope]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

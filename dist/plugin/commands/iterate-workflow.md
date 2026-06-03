@@ -1,6 +1,6 @@
 ---
-description: Compatibility lessons iteration entry; prefer workflowprogram-orchestrate
-argument-hint: [--dry-run] [--apply] [workflow-path]
+description: "Compatibility lessons iteration entry; prefer workflowprogram-orchestrate"
+argument-hint: "[--dry-run] [--apply] [workflow-path]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

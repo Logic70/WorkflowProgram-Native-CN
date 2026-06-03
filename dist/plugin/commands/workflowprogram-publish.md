@@ -1,6 +1,6 @@
 ---
-description: Publish a completed target workflow as a Claude Code marketplace plugin
-argument-hint: <target-root> --plugin-id <id> --repo <owner/repo-or-url> [--repo-mode existing_marketplace --repo-path <checkout>] [--dry-run]
+description: "Publish a completed target workflow as a Claude Code marketplace plugin"
+argument-hint: "<target-root> --plugin-id <id> --repo <owner/repo-or-url> [--repo-mode existing_marketplace --repo-path <checkout>] [--dry-run]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

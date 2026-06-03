@@ -1,6 +1,6 @@
 ---
-description: Repository hotfix compatibility command
-argument-hint: [description]
+description: "Repository hotfix compatibility command"
+argument-hint: "[description]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

@@ -386,7 +386,12 @@ def expected_dist_bytes(build_plugin: Any, source_root_rel: str, source_file: Pa
     if source_root_rel == ".claude/commands":
         name = source_file.stem
         desc, hint = build_plugin.COMMAND_DESCRIPTIONS[name]
-        frontmatter = f"---\ndescription: {desc}\nargument-hint: {hint}\n---\n\n"
+        frontmatter = (
+            "---\n"
+            f"description: {build_plugin.yaml_string(desc)}\n"
+            f"argument-hint: {build_plugin.yaml_string(hint)}\n"
+            "---\n\n"
+        )
         rendered = frontmatter + build_plugin.MARKDOWN_HEADER + build_plugin.apply_replacements(content)
         return rendered.encode("utf-8")
 

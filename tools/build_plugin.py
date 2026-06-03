@@ -138,10 +138,20 @@ def apply_replacements(content: str) -> str:
     return content
 
 
+def yaml_string(value: str) -> str:
+    """Render a frontmatter string as a quoted YAML scalar."""
+    return json.dumps(value, ensure_ascii=False)
+
+
 def render_command(src: Path, dst: Path, desc: str, hint: str) -> None:
     """为命令 Markdown 生成带 frontmatter 的分发版本。"""
     body = apply_replacements(src.read_text(encoding="utf-8"))
-    frontmatter = f"---\ndescription: {desc}\nargument-hint: {hint}\n---\n\n"
+    frontmatter = (
+        "---\n"
+        f"description: {yaml_string(desc)}\n"
+        f"argument-hint: {yaml_string(hint)}\n"
+        "---\n\n"
+    )
     write_text(dst, frontmatter + MARKDOWN_HEADER + body)
 
 

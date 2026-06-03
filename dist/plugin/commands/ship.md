@@ -1,6 +1,6 @@
 ---
-description: Repository shipping compatibility command
-argument-hint: [scope] [--auto-approve]
+description: "Repository shipping compatibility command"
+argument-hint: "[scope] [--auto-approve]"
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->

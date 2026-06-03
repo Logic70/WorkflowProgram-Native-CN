@@ -1,4 +1,9 @@
+---
+description: Generates test scenarios for workflow designs.
+---
+
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->
+
 
 # Test Scenario Generator
 

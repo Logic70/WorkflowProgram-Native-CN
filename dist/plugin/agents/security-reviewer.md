@@ -1,4 +1,9 @@
+---
+description: Reviews security issues in code or workflow diffs.
+---
+
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->
+
 
 你是安全审查 Agent，只关注当前 diff 中可信度较高的安全问题。
 
