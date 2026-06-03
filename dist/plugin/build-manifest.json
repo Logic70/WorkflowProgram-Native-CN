@@ -1,26 +1,26 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-03T08:33:00Z",
+  "generated_at": "2026-06-03T09:21:32Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.0",
-  "source_commit": "54116dab4d78f5b5789eb222883136efe0d87351",
+  "plugin_version": "0.1.1",
+  "source_commit": "386e6812b30ab9b72de9ad7b3966f788a4c9c923",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "7f0d15955a8594a41e0dcd51a5c479bbf42a8fb657ec19247847b9d9f9c343f6",
+      "sha256": "c1df9eb188e1ba54575fbea7cf75bb23811d45066c34eef6780de53b73f58663",
       "size": 1213
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "3f37983b2a12d23c08aff812424a49bbdd8b0cccc00e2681554f309370005f06",
+      "sha256": "46a89d59a606c9d06bad904d0a97fcd147d1904b7822e47abc6cc4dc0d552ec8",
       "size": 547
     },
     {
       "path": ".claude-plugin/README.md",
-      "sha256": "a6e86525281a7b972ecd35346032ed1b106fb2daaeb031f2aa5712e8f3d5b478",
-      "size": 12167
+      "sha256": "7ca251806c182609bd70ce9aa80513d5ffdd2554ac3f6ef01b39c076efeb9d6d",
+      "size": 12169
     },
     {
       "path": "agents/logic-reviewer.md",
@@ -224,8 +224,8 @@
     },
     {
       "path": "scripts/generate-native-workflow.py",
-      "sha256": "d269d09cb941c17a013bfa23e6dc2694b7497b15da8de62e138c765f57d6bb82",
-      "size": 27452
+      "sha256": "03b0507d8a6da1e692ed9b130bd34aa717995e2cd9e534db0eeea6fa8c5145db",
+      "size": 29848
     },
     {
       "path": "scripts/generate-target-runtime.py",
@@ -424,8 +424,8 @@
     },
     {
       "path": "scripts/validate-native-workflow-js.py",
-      "sha256": "10aebb74d6396a731db6d115aabcbd47af648133b4837246b87e6962a24af32d",
-      "size": 10611
+      "sha256": "75cd3267f79773c26669a1123ac45a1b082aa98684d438a995f5102520b3ef32",
+      "size": 10727
     },
     {
       "path": "scripts/validate-publish-eligibility.py",

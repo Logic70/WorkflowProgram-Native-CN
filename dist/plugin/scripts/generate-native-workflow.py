@@ -22,6 +22,7 @@ from lib.io_utils import write_json
 
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+AGENT_CALL_PATTERN = re.compile(r"(?<![\w$])agent\s*\(")
 SUPPORTING_ASSET_RULES = {
     "skill": (".claude/skills/", "/SKILL.md"),
     "agent": (".claude/agents/", ".md"),
@@ -252,12 +253,14 @@ def load_authoring_spec(path: Path) -> dict[str, Any]:
     if not isinstance(body, str) or not body.strip():
         raise ValueError("`body` must be a non-empty JavaScript string.")
     supporting_assets = normalize_supporting_assets(payload.get("supporting_assets", []))
+    task_model_policy = normalize_task_model_policy(payload.get("task_model_policy"))
     return {
         "name": name,
         "description": description,
         "phases": normalized_phases,
         "body": body.strip() + "\n",
         "supporting_assets": supporting_assets,
+        "task_model_policy": task_model_policy,
     }
 
 
@@ -306,6 +309,28 @@ def normalize_supporting_assets(value: Any) -> list[dict[str, str]]:
     return normalized
 
 
+def normalize_task_model_policy(value: Any) -> dict[str, Any]:
+    """Validate optional target workflow task-model metadata."""
+
+    if value is None:
+        return {"agent_task_models": {}}
+    if not isinstance(value, dict):
+        raise ValueError("`task_model_policy` must be an object when provided.")
+    raw_agent_task_models = value.get("agent_task_models", {})
+    if raw_agent_task_models is None:
+        raw_agent_task_models = {}
+    if not isinstance(raw_agent_task_models, dict):
+        raise ValueError("`task_model_policy.agent_task_models` must be an object when provided.")
+    agent_task_models: dict[str, str] = {}
+    for label, task_type in raw_agent_task_models.items():
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("`task_model_policy.agent_task_models` keys must be non-empty strings.")
+        if not isinstance(task_type, str) or not task_type.strip():
+            raise ValueError("`task_model_policy.agent_task_models` values must be non-empty strings.")
+        agent_task_models[label.strip()] = task_type.strip()
+    return {"agent_task_models": agent_task_models}
+
+
 def render_workflow(spec: dict[str, Any]) -> str:
     """Render a deterministic Native Workflow JS file."""
 
@@ -314,7 +339,27 @@ def render_workflow(spec: dict[str, Any]) -> str:
         "description": spec["description"],
         "phases": spec["phases"],
     }
-    return f"export const meta = {json.dumps(meta, ensure_ascii=False, indent=2)}\n\n{spec['body']}"
+    task_policy = spec.get("task_model_policy") or {}
+    agent_task_models = task_policy.get("agent_task_models") or {}
+    body = spec["body"]
+    if agent_task_models:
+        body = AGENT_CALL_PATTERN.sub("workflowprogramAgent(", body)
+        helper = (
+            f"const taskModels = args?.taskModels || {{}}\n"
+            f"const agentTaskTypes = {json.dumps(agent_task_models, ensure_ascii=False, indent=2)}\n"
+            "const withTaskModel = (taskType, options) => {\n"
+            "  const alias = typeof taskModels[taskType] === 'string' ? taskModels[taskType].trim() : ''\n"
+            "  if (!alias || alias === 'inherit') return options\n"
+            "  return { ...options, model: alias }\n"
+            "}\n"
+            "const workflowprogramAgent = async (prompt, options = {}) => {\n"
+            "  const taskType = typeof options?.label === 'string' ? agentTaskTypes[options.label] || '' : ''\n"
+            "  return agent(prompt, withTaskModel(taskType, options))\n"
+            "}\n\n"
+        )
+    else:
+        helper = ""
+    return f"export const meta = {json.dumps(meta, ensure_ascii=False, indent=2)}\n\n{helper}{body}"
 
 
 def generation_report(

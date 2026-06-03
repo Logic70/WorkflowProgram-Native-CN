@@ -281,18 +281,19 @@ def write_authoring_spec(
     description: str = "Generate a minimal native workflow probe.",
     body: str = "phase('Probe')\n\nreturn { status: 'PASS' }\n",
     supporting_assets: list[dict[str, str]] | None = None,
+    task_model_policy: dict | None = None,
 ) -> None:
+    payload = {
+        "name": "generated-probe",
+        "description": description,
+        "phases": [{"title": "Probe", "detail": "Return PASS."}],
+        "body": body,
+        "supporting_assets": supporting_assets or [],
+    }
+    if task_model_policy is not None:
+        payload["task_model_policy"] = task_model_policy
     path.write_text(
-        json.dumps(
-            {
-                "name": "generated-probe",
-                "description": description,
-                "phases": [{"title": "Probe", "detail": "Return PASS."}],
-                "body": body,
-                "supporting_assets": supporting_assets or [],
-            },
-            indent=2,
-        )
+        json.dumps(payload, indent=2)
         + "\n",
         encoding="utf-8",
     )
@@ -311,9 +312,143 @@ def test_generator_stages_only_native_workflow_by_default(tmp_path: Path) -> Non
     assert payload["status"] == "PASS"
     candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "generated-probe.js"
     assert candidate.exists()
+    assert "workflowprogramAgent" not in candidate.read_text(encoding="utf-8")
     assert not (target / ".claude" / "workflows" / "generated-probe.js").exists()
     assert not (run_root / "outputs" / "candidate" / ".workflowprogram").exists()
     assert (run_root / "outputs" / "stages" / "native-workflow-validation.json").exists()
+
+
+def execute_generated_workflow_with_models(script: Path, args: dict, agent_results: list[dict]) -> dict:
+    harness = r"""
+const fs = require('node:fs')
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'))
+const source = fs.readFileSync(payload.script, 'utf8').replace('export const meta =', 'const meta =')
+const phases = []
+const labels = []
+const models = []
+const modelProperties = []
+const queuedAgentResults = [...payload.agentResults]
+const phase = title => phases.push(title)
+const agent = async (_prompt, options) => {
+  labels.push(options?.label || '')
+  models.push(options?.model || null)
+  modelProperties.push(Object.prototype.hasOwnProperty.call(options || {}, 'model'))
+  if (queuedAgentResults.length === 0) {
+    throw new Error('Mock Agent result queue is empty')
+  }
+  return queuedAgentResults.shift()
+}
+const parallel = async thunks => Promise.all(thunks.map(thunk => thunk()))
+const pipeline = async (items, ...stages) => {
+  let current = items
+  for (const stage of stages) current = await Promise.all(current.map(stage))
+  return current
+}
+const workflow = async () => {
+  throw new Error('Nested workflow is not expected in this test')
+}
+const run = new Function('args', 'phase', 'agent', 'parallel', 'pipeline', 'workflow', `return (async () => { ${source}\n })()`)
+run(payload.args, phase, agent, parallel, pipeline, workflow)
+  .then(result => console.log(JSON.stringify({ result, phases, labels, models, modelProperties })))
+  .catch(error => {
+    console.error(error.stack || String(error))
+    process.exit(1)
+  })
+"""
+    completed = subprocess.run(
+        ["node", "-e", harness],
+        cwd=ROOT,
+        input=json.dumps({"script": str(script), "args": args, "agentResults": agent_results}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    return json.loads(completed.stdout)
+
+
+def test_generator_injects_task_model_control_plane_for_target_workflow(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(
+        spec,
+        body=(
+            "phase('Probe')\n"
+            "const result = await agent('Return a PASS probe result.', {\n"
+            "  label: 'generated-probe:probe',\n"
+            "  schema: {\n"
+            "    type: 'object',\n"
+            "    properties: { status: { type: 'string', enum: ['PASS', 'BLOCKED'] } },\n"
+            "    required: ['status'],\n"
+            "    additionalProperties: false,\n"
+            "  },\n"
+            "})\n"
+            "if (result.status !== 'PASS') return { status: 'BLOCKED' }\n"
+            "return { status: 'PASS' }\n"
+        ),
+        task_model_policy={
+            "agent_task_models": {
+                "generated-probe:probe": "architecture",
+            },
+        },
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "generated-probe.js"
+    source = candidate.read_text(encoding="utf-8")
+    assert source.startswith("export const meta = {")
+    assert "const taskModels = args?.taskModels || {}" in source
+    assert "workflowprogramAgent(" in source
+    assert "agentTaskTypes" in source
+
+    execution = execute_generated_workflow_with_models(
+        candidate,
+        {"taskModels": {"architecture": "deepseek-v4-pro[1M]"}},
+        [{"status": "PASS"}],
+    )
+
+    assert execution["result"]["status"] == "PASS"
+    assert execution["labels"] == ["generated-probe:probe"]
+    assert execution["models"] == ["deepseek-v4-pro[1M]"]
+    assert execution["modelProperties"] == [True]
+
+
+def test_generated_target_workflow_omits_model_for_inherit_and_missing_mapping(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(
+        spec,
+        body=(
+            "phase('Probe')\n"
+            "const first = await agent('Return PASS.', { label: 'generated-probe:first', schema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'], additionalProperties: false } })\n"
+            "const second = await agent('Return PASS.', { label: 'generated-probe:second', schema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'], additionalProperties: false } })\n"
+            "return { status: first.status === 'PASS' && second.status === 'PASS' ? 'PASS' : 'BLOCKED' }\n"
+        ),
+        task_model_policy={
+            "agent_task_models": {
+                "generated-probe:first": "architecture",
+            },
+        },
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "generated-probe.js"
+
+    execution = execute_generated_workflow_with_models(
+        candidate,
+        {"taskModels": {"architecture": " inherit "}},
+        [{"status": "PASS"}, {"status": "PASS"}],
+    )
+
+    assert execution["result"]["status"] == "PASS"
+    assert execution["models"] == [None, None]
+    assert execution["modelProperties"] == [False, False]
 
 
 def test_generator_apply_creates_managed_native_workflow(tmp_path: Path) -> None:

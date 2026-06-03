@@ -45,7 +45,7 @@ claude plugin install workflowprogram-native-cn@logic70-plugins
 排障：
 
 - 如果出现 `Unknown skill: workflowprogram-orchestrate`，通常是当前 Claude 会话还没重新加载插件。执行 `/reload-plugins` 或重启 `claude`，然后用 `/workflowprogram-native-cn:workflowprogram-orchestrate ...` 入口，不要让模型手写 `Skill(workflowprogram-orchestrate)`。
-- 如果出现 `bin/workflowprogram-python: Permission denied`，说明安装缓存里的 launcher 没有执行权限。更新到最新 marketplace 载荷后重新安装；临时修复可执行 `chmod +x ~/.claude/plugins/cache/logic70-plugins/workflowprogram-native-cn/0.1.11/bin/workflowprogram-*`。
+- 如果出现 `bin/workflowprogram-python: Permission denied`，说明安装缓存里的 launcher 没有执行权限。更新到最新 marketplace 载荷后重新安装；临时修复可执行 `chmod +x ~/.claude/plugins/cache/logic70-plugins/workflowprogram-native-cn/<version>/bin/workflowprogram-*`。
 
 开发和调试仍可使用源码构建 `dist/plugin/`，但那不再是面向最终用户的主安装模型。
 

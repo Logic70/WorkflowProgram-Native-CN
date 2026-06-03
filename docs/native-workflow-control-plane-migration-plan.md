@@ -299,6 +299,20 @@ M11 v1 已完成：
 
 - 31 项单元测试覆盖默认映射、policy 覆盖、不可用 alias 回退、自定义 alias 接受/拒绝、缺失/无效 policy 文件（POLICY_FILE_UNAVAILABLE / POLICY_FILE_INVALID）、未知 taskType（TASK_TYPE_UNMAPPED）、--task-type 过滤、--available-model CLI 优先于 env、--out 精确路径、缺少输出目的地、JS model 属性在 inherit/absent 时省略、product workflow 透传（develop/audit/iterate/native-authoring）、迭代全路径四种 agent 类型传播。
 
+### M17. 本次实施：目标 workflow 生成路径的模型控制面
+
+范围：
+
+- 在 `generate-native-workflow.py` 的 authoring spec 契约中新增可选 `task_model_policy.agent_task_models`。
+- renderer 只负责把逻辑 task type 映射和 `withTaskModel` helper 写入目标 JS，不在生成阶段解析具体模型别名。
+- 目标 workflow 运行时继续消费 `args.taskModels`；缺失、空值和 `inherit` 均省略 `model` 属性，保持默认继承。
+- 生成器必须保持 `meta` pure-literal 开头，模型 helper 只能出现在 `meta` 后。
+
+准出条件：
+
+- generator 单测覆盖显式映射、`inherit`、缺失映射、生成 JS 执行时的 `model` 透传。
+- Native static validation、仓库 `validate-workflow.py` 和 `claude plugin validate dist/plugin` 通过。
+
 ### M14. 已完成：Legacy 下线评估
 
 当前状态：

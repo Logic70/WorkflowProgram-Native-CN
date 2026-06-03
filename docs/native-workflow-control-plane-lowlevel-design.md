@@ -206,6 +206,8 @@ export const meta = {
 - 文件末尾返回稳定 envelope。
 - 不使用 `fs`、`require()`、`process`、`Date.now()`、`Math.random()` 或无参 `new Date()`。
 - 插件产品 JS 之间需要嵌套调用时，使用启动层传入或解析后的绝对脚本引用；不得假设 leaf 名称已进入 saved workflow registry。该路径必须增加嵌套 smoke。
+- 当目标 workflow 包含可配置模型选择时，JS 必须在 `meta` 后声明 `const taskModels = args?.taskModels || {}` 和 `withTaskModel(taskType, options)` 助手。helper 只在 `args.taskModels[taskType]` 是非空且不等于 `inherit` 时添加 `model`；缺失、空字符串和 `inherit` 均必须省略 `model` 属性。
+- `generate-native-workflow.py` 的 authoring spec 可选 `task_model_policy` 字段用于声明生成目标 JS 所需的任务类型映射。该字段不得改变 `meta` 纯字面量头部；只能在 `meta` 后注入 helper，并根据 `agent_task_models` 把声明的 Agent label 映射到逻辑 task type。
 
 ## 7. Agent、Skill 与领域脚本边界
 
@@ -491,7 +493,22 @@ M13 已实现可选文件：
 - 嵌套 workflow 必须继续透传 `args.taskModels`，避免子流程重新读取 policy 或产生不同解析结果。
 - policy 缺失、别名不可用或宿主不支持时回退 `inherit`，并记录 evidence。
 - `workflowprogram-develop.js` 的初始映射应为：两个只读探索 Agent 使用 `repository-exploration`，设计 Agent 使用 `architecture`，独立审查 Agent 使用 `risk-review`。
-- M13 已实现该能力；调用方仍需在启动 workflow 前显式执行 resolver 并把结果写入 `args.taskModels`。
+- M13 已实现 WorkflowProgram 产品 workflow 自身的该能力；调用方仍需在启动 workflow 前显式执行 resolver 并把结果写入 `args.taskModels`。
+- M17 扩展目标 workflow 生成路径：authoring spec 可以携带 `task_model_policy.agent_task_models`，key 为目标 JS 中的 Agent label，value 为逻辑 task type。renderer 生成目标 JS 时只注入 helper 和声明映射，不解析具体模型；具体模型仍由启动目标 workflow 的调用方通过 `args.taskModels` 提供。
+
+目标 authoring spec 示例：
+
+```json
+{
+  "task_model_policy": {
+    "agent_task_models": {
+      "target:explore": "repository-exploration",
+      "target:design": "architecture",
+      "target:review": "risk-review"
+    }
+  }
+}
+```
 
 `resolve-task-model-policy.py` 输出 `RUN_ROOT/outputs/stages/task-model-resolution.json`：
 

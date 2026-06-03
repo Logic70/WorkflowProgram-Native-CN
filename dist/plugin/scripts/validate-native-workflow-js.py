@@ -26,9 +26,10 @@ PHASE_CALL_PATTERN = re.compile(r"\bphase\s*\(\s*(['\"])(?P<value>[^'\"]+)\1\s*\
 RETURN_STATUS_PATTERN = re.compile(r"\breturn\s*\{[\s\S]{0,1000}?\bstatus\s*:", re.MULTILINE)
 STRING_LITERAL_PATTERN = re.compile(r"""(['"])(?:\\.|(?!\1).)*\1""", re.DOTALL)
 AGENT_ASSIGNMENT_PATTERN = re.compile(
-    r"\b(?:const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*await\s+agent\s*\(",
+    r"\b(?:const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*await\s+(?:agent|workflowprogramAgent)\s*\(",
     re.MULTILINE,
 )
+AGENT_CALL_PATTERN = re.compile(r"\b(?:agent|workflowprogramAgent)\s*\(")
 PATH_HINT_PATTERN = re.compile(r"(?:[A-Za-z0-9_.-]+/)+")
 WRITE_HINT_PATTERN = re.compile(r"\b(?:write|edit|create|update|modify|save|overwrite)\b", re.IGNORECASE)
 
@@ -169,7 +170,7 @@ def validate_parallel_writes(text: str, errors: list[dict[str, str]]) -> None:
         except ValueError:
             errors.append(error("PARALLEL_CALL_INVALID", "A `parallel()` call is not balanced."))
             continue
-        if parallel_call.count("agent(") < 2 or len(WRITE_HINT_PATTERN.findall(parallel_call)) < 2:
+        if len(AGENT_CALL_PATTERN.findall(parallel_call)) < 2 or len(WRITE_HINT_PATTERN.findall(parallel_call)) < 2:
             continue
         paths = [item.lower() for item in PATH_HINT_PATTERN.findall(parallel_call)]
         repeated = sorted({path for path in paths if paths.count(path) > 1})

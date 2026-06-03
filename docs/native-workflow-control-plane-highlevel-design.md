@@ -169,6 +169,7 @@ M13 已完成按任务类型选择模型的核心实现。
 - Agent 声明逻辑任务类型，例如 `repository-exploration`、`architecture`、`risk-review`、`static-review`、`generation`、`clarification`、`complex-generation`、`publish-verification`。
 - `resolve-task-model-policy.py` host-side resolver 读取可选 `task-model-policy.json`，将逻辑任务类型映射为运行时可用模型，输出 `task-model-resolution.json` 至 `RUN_ROOT/outputs/stages/`。
 - product workflow JS 通过 `withTaskModel(taskType, options)` 助手消费 `args.taskModels`；映射不存在、为空或为 `inherit` 时不传 `model`（默认继承），具体别名才成为 `options.model`。
+- 生成后的目标 workflow JS 也必须具备同一控制面：`generate-native-workflow.py` 接受 authoring spec 中的 `task_model_policy`，在目标 JS 中生成 `taskModels` 与 `withTaskModel` 助手，并把设计声明的 `taskType` 映射到每个 Agent 调用；未声明 `taskType` 的 Agent 继续继承当前模型。
 - 首版默认使用 `deepseek-v4-flash[1M]` 承担澄清、仓库探索、普通生成和低风险静态复核，使用 `deepseek-v4-pro[1M]` 承担架构设计、复杂生成、风险审查和发布资格复核。策略允许按任务覆盖。
 - 未配置或模型不可用时回退到默认继承模型，并记录 `MODEL_ALIAS_UNAVAILABLE` 或 `TASK_TYPE_UNMAPPED` evidence。
 - 供应商和版本不散落硬编码在 workflow JS 中。
