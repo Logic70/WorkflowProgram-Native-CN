@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-03T10:16:00Z",
+  "generated_at": "2026-06-04T01:02:48Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.1",
-  "source_commit": "5869c9227fe9af7bc17033b041acf4d69a309564",
+  "plugin_version": "0.1.2",
+  "source_commit": "f77687ffeefc17fdcd36db010c3aa92591ca72e4",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "c1df9eb188e1ba54575fbea7cf75bb23811d45066c34eef6780de53b73f58663",
+      "sha256": "d319b346775943a974b498a3f76234a770b2113a481cfb45cb08f5dfbaeb8aac",
       "size": 1213
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "46a89d59a606c9d06bad904d0a97fcd147d1904b7822e47abc6cc4dc0d552ec8",
+      "sha256": "6ad52c43d1ba0e7d24714583b8922d77c46589e9ccf4377e6ddc1ad91ee04cce",
       "size": 547
     },
     {
