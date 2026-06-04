@@ -61,6 +61,38 @@ def test_readiness_accepts_confirmed_complete_packet(tmp_path: Path) -> None:
     assert load_json(completed)["status"] == "PASS"
 
 
+def test_readiness_accepts_runtime_camelcase_lens_keys(tmp_path: Path) -> None:
+    readiness = tmp_path / "readiness.json"
+    payload = packet(tmp_path)
+    payload["lenses"] = {
+        "purpose": "Find correctness and test gaps.",
+        "objectModel": "Read repository files and return findings.",
+        "processModel": "Explore, review, and decide.",
+        "decisionModel": "Block on high severity findings.",
+        "evidenceModel": "Require file references and test evidence.",
+        "acceptanceModel": "PASS without blockers and BLOCKED with blockers.",
+        "boundaryModel": "Do not edit files.",
+    }
+    write_json(readiness, payload)
+
+    completed = run_script(VALIDATOR, "--packet", str(readiness), "--json")
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert load_json(completed)["status"] == "PASS"
+
+
+def test_readiness_rejects_unmapped_lens_keys(tmp_path: Path) -> None:
+    readiness = tmp_path / "readiness.json"
+    payload = packet(tmp_path)
+    payload["lenses"]["object-model"] = "A third key spelling must not be accepted."
+    write_json(readiness, payload)
+
+    completed = run_script(VALIDATOR, "--packet", str(readiness), "--json")
+
+    assert completed.returncode == 1
+    assert "LENS_KEY_UNMAPPED" in {item["rule"] for item in load_json(completed)["errors"]}
+
+
 @pytest.mark.parametrize(
     ("mutate", "rule"),
     [

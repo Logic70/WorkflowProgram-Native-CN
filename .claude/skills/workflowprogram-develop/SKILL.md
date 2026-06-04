@@ -11,6 +11,11 @@ disable-model-invocation: true
 
 ## Native Default Entry
 
+D1 clarification semantics are owned by `workflowprogram-native-cn:requirement-clarification-lead`
+and `${CLAUDE_PLUGIN_ROOT}/skills/workflow-spec-support/logic-lenses.md`.
+This skill only relays JS-returned questions and reinvokes the product JS with
+answers; it must not emulate that Agent through foreground prompt role-play.
+
 默认路径是解析插件绝对路径后调用：
 
 ```text

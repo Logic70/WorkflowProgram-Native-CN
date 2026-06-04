@@ -79,6 +79,8 @@ def _parse_args() -> argparse.Namespace:
     pkt.add_argument("--scenario-id", default="", help="Optional scenario identifier")
     pkt.add_argument("--evidence-profile", default="full", choices=sorted(VALID_EVIDENCE_PROFILES),
                      help="Evidence classification profile (default: full)")
+    pkt.add_argument("--required-agent-attribution", action="append", default=[],
+                     help="Agent attribution that must be visible in evaluated JSONL")
     pkt.add_argument("--out", default="", help="Write packet JSON to file")
     pkt.add_argument("--json", action="store_true", help="Print packet JSON to stdout")
 
@@ -90,6 +92,8 @@ def _parse_args() -> argparse.Namespace:
     ev.add_argument("--scenario-id", default="", help="Optional scenario identifier")
     ev.add_argument("--evidence-profile", default="full", choices=sorted(VALID_EVIDENCE_PROFILES),
                     help="Evidence classification profile (default: full)")
+    ev.add_argument("--required-agent-attribution", action="append", default=[],
+                    help="Agent attribution that must be visible in session or journal JSONL")
     ev.add_argument("--json", action="store_true", help="Print JSON evaluation result")
 
     return parser.parse_args()
@@ -242,6 +246,7 @@ def run_packet(args: argparse.Namespace) -> int:
             args.workflow, args.script_path, args_payload
         ),
         "expectedEvidenceTypes": _build_expected_evidence_types(expected, args.evidence_profile),
+        "requiredAgentAttributions": args.required_agent_attribution,
         "manualReviewHints": _build_manual_review_hints(),
         "computerUseBoundary": "manual-wsl-execution-supported",
         "computerUseNote": (
@@ -305,6 +310,41 @@ def _walk_dicts(value: Any):
     elif isinstance(value, list):
         for nested in value:
             yield from _walk_dicts(nested)
+
+
+def _record_agent_attribution(value: Any, line_number: int, attributions: set, matching_lines: Dict[str, List[int]]) -> None:
+    """Record one agent attribution value with stable line evidence."""
+
+    if not isinstance(value, str):
+        return
+    attribution = value.strip()
+    if not attribution:
+        return
+    attributions.add(attribution)
+    matching_lines.setdefault(attribution, []).append(line_number)
+
+
+def _collect_agent_attributions(record: dict, line_number: int, attributions: set, matching_lines: Dict[str, List[int]]) -> None:
+    """Collect Agent attribution fields from one parsed JSONL record."""
+
+    for node in _walk_dicts(record):
+        for key in ("attributionAgent", "agentType", "agent_type"):
+            _record_agent_attribution(node.get(key), line_number, attributions, matching_lines)
+
+
+def _collect_agent_attributions_from_text(
+    line: str,
+    line_number: int,
+    attributions: set,
+    matching_lines: Dict[str, List[int]],
+) -> None:
+    """Fallback extraction for textual JSONL fragments."""
+
+    for match in re.finditer(
+        r'(?:attributionAgent|agentType|agent_type)["\'\s:=]+([A-Za-z0-9_.:-]+)',
+        line,
+    ):
+        _record_agent_attribution(match.group(1), line_number, attributions, matching_lines)
 
 
 def _classify_line_structural(record: dict, workflow: str) -> set:
@@ -565,6 +605,8 @@ def classify_evidence(
 
     evidence: Dict[str, bool] = {key: False for key in EVIDENCE_KEYS}
     matching_lines: Dict[str, List[int]] = {key: [] for key in EVIDENCE_KEYS}
+    agent_attributions: set[str] = set()
+    agent_attribution_lines: Dict[str, List[int]] = {}
 
     # ── Structural detection first ──────────────────────────
     for line_number, line in enumerate(main_lines, start=1):
@@ -572,6 +614,8 @@ def classify_evidence(
         is_user_message = bool(record and record.get("type") == "user")
 
         if record is not None:
+            _collect_agent_attributions(record, line_number, agent_attributions, agent_attribution_lines)
+
             # Structural evidence keys
             struct_keys = _classify_line_structural(record, workflow)
             for key in struct_keys:
@@ -595,6 +639,8 @@ def classify_evidence(
             # Prevent text-substring false positives from user messages
             if is_user_message:
                 continue
+
+        _collect_agent_attributions_from_text(line, line_number, agent_attributions, agent_attribution_lines)
 
         # ── Fallback substring matching (NOT for user messages) ─
         # skill_listing fallback
@@ -649,6 +695,8 @@ def classify_evidence(
     # ── Journal (extra) lines ───────────────────────────────
     for line_number, line in enumerate(extra_lines, start=1):
         record = _try_parse_json(line)
+        if record is not None:
+            _collect_agent_attributions(record, -line_number, agent_attributions, agent_attribution_lines)
 
         if record is not None:
             # Structural: "started" type → agent_started
@@ -680,11 +728,15 @@ def classify_evidence(
                         matching_lines["schema_result"].append(-line_number)
                         break
 
+        _collect_agent_attributions_from_text(line, -line_number, agent_attributions, agent_attribution_lines)
+
     run_ids = _extract_run_ids(all_lines)
 
     return {
         "evidence": evidence,
         "matching_lines": matching_lines,
+        "agent_attributions": sorted(agent_attributions),
+        "agent_attribution_lines": agent_attribution_lines,
         "run_ids": sorted(set(run_ids)),
         "journal_jsonl": journal_path_str,
         "main_line_count": len(main_lines),
@@ -845,6 +897,24 @@ def run_evaluate(args: argparse.Namespace) -> int:
         return 1
 
     status_result = _determine_status(result["evidence"], expected, args.evidence_profile)
+    required_agent_attributions = args.required_agent_attribution or []
+    missing_agent_attributions = [
+        attribution
+        for attribution in required_agent_attributions
+        if attribution not in result["agent_attributions"]
+    ]
+    if missing_agent_attributions and status_result["status"] != "UNAVAILABLE":
+        status_result = {
+            "status": "INCONCLUSIVE",
+            "return_code": 1,
+            "blockingIssues": [
+                *status_result["blockingIssues"],
+                *[
+                    f"Missing required agent attribution: {attribution}"
+                    for attribution in missing_agent_attributions
+                ],
+            ],
+        }
 
     payload = {
         "schema_version": 1,
@@ -859,6 +929,10 @@ def run_evaluate(args: argparse.Namespace) -> int:
         "runIds": result["run_ids"],
         "evidence": result["evidence"],
         "matching_lines": result["matching_lines"],
+        "agentAttributions": result["agent_attributions"],
+        "agentAttributionLines": result["agent_attribution_lines"],
+        "requiredAgentAttributions": required_agent_attributions,
+        "missingAgentAttributions": missing_agent_attributions,
         "blockingIssues": status_result["blockingIssues"],
         "lineCounts": {
             "main": result["main_line_count"],

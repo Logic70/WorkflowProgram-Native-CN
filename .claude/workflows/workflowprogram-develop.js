@@ -28,6 +28,11 @@ const withTaskModel = (taskType, options) => {
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
 const nonEmptyArray = value => asArray(value).length > 0 && asArray(value).every(nonEmpty)
+const hasLensContent = value => {
+  if (typeof value === 'string') return value.trim().length > 0
+  if (Array.isArray(value)) return value.length > 0
+  return value && typeof value === 'object' && Object.keys(value).length > 0
+}
 const respond = (status, extra = {}) => {
   return {
     status: status,
@@ -62,6 +67,64 @@ const hasAuthoringSpec = spec =>
   asArray(spec?.phases).every(item => nonEmpty(item?.title))
 const matchesCandidate = (evidence, candidateHash) =>
   hasEvidence(evidence) && nonEmpty(candidateHash) && evidence?.candidateHash === candidateHash
+const logicLensDefinitions = [
+  {
+    id: 'purpose',
+    legacyId: 'purpose',
+    title: 'Purpose Lens',
+    task: 'Convert the request into observable purpose, user value, and success signal.',
+    question: 'What decision or action should become easier after this workflow runs?',
+  },
+  {
+    id: 'objectModel',
+    legacyId: 'object_model',
+    title: 'Object Lens',
+    task: 'Identify input, intermediate, and output objects plus source-of-truth rules.',
+    question: 'What intermediate object must exist before the workflow can make the next decision?',
+  },
+  {
+    id: 'processModel',
+    legacyId: 'process_model',
+    title: 'Process Lens',
+    task: 'Decompose the work into meaningful workflow phases or node candidates.',
+    question: 'Before the next major step starts, what must already be known or produced?',
+  },
+  {
+    id: 'decisionModel',
+    legacyId: 'decision_model',
+    title: 'Decision Lens',
+    task: 'Expose branching choices, decision inputs, fallbacks, confidence, and owners.',
+    question: 'How should the workflow choose between plausible strategies or next actions?',
+  },
+  {
+    id: 'evidenceModel',
+    legacyId: 'evidence_model',
+    title: 'Evidence Lens',
+    task: 'Define evidence required to trust outputs, decisions, and intermediate models.',
+    question: 'What evidence should a reviewer see before trusting this output?',
+  },
+  {
+    id: 'acceptanceModel',
+    legacyId: 'acceptance_model',
+    title: 'Acceptance Lens',
+    task: 'Turn clarified logic into concrete positive, negative, and ambiguous scenarios.',
+    question: 'Give one example input where the workflow should pass and one where it should stop.',
+  },
+  {
+    id: 'boundaryModel',
+    legacyId: 'boundary_model',
+    title: 'Boundary Lens',
+    task: 'Define non-goals, stop conditions, manual confirmations, and degradation rules.',
+    question: 'What must the workflow never modify or infer automatically?',
+  },
+]
+const lensValue = lens => lenses?.[lens.id] ?? lenses?.[lens.legacyId]
+const fallbackQuestion = lens => ({
+  id: lens.id,
+  lens: lens.id,
+  question: lens.question,
+  reason: `${lens.title} changes the Native Workflow JS design and gates.`,
+})
 
 phase('Intake')
 
@@ -88,32 +151,81 @@ phase('Clarify')
 
 const clarification = args?.clarification || {}
 const lenses = clarification.lenses || {}
-const requiredLenses = [
-  ['purpose', 'Why does this workflow exist and what outcome should it produce?'],
-  ['objectModel', 'What objects does the workflow read, transform, classify, or produce?'],
-  ['processModel', 'Which phases are required, and in which order?'],
-  ['decisionModel', 'Which branches, thresholds, and approvals change execution?'],
-  ['evidenceModel', 'Which evidence makes intermediate and final results trustworthy?'],
-  ['acceptanceModel', 'Which positive, negative, and ambiguous scenarios prove behavior?'],
-  ['boundaryModel', 'Which stop conditions, conflicts, and non-goals apply?'],
-]
-const missingLensQuestions = requiredLenses
-  .filter(([id]) => !nonEmpty(lenses[id]))
-  .map(([id, question]) => ({
-    id,
-    question,
-    reason: `The ${id} lens changes the Native Workflow JS design and gates.`,
-  }))
+const missingLenses = logicLensDefinitions.filter(lens => !hasLensContent(lensValue(lens)))
 const openQuestions = asArray(clarification.openQuestions).map((question, index) => ({
   id: question?.id || `openQuestion-${index + 1}`,
+  lens: question?.lens || 'purpose',
   question: question?.question || String(question),
   reason: question?.reason || 'This open question must be closed before design.',
 }))
-const questions = [...missingLensQuestions, ...openQuestions]
+let questions = []
 
-if (questions.length > 0) {
+if (missingLenses.length > 0 || openQuestions.length > 0) {
+  const clarificationResult = await agent(
+    `Clarify this WorkflowProgram Native develop request by asking only design-consequential questions.
+
+Requirement:
+${JSON.stringify({ request, targetRoot, runRoot, operation })}
+
+Current clarification:
+${JSON.stringify(clarification)}
+
+Logic lens definitions:
+${JSON.stringify(logicLensDefinitions)}
+
+Missing runtime lens ids:
+${JSON.stringify(missingLenses.map(lens => lens.id))}
+
+Open questions:
+${JSON.stringify(openQuestions)}
+
+Use the registered requirement-clarification-lead semantics. Ask 1-3 questions that can change workflow nodes, decisions, evidence, acceptance, or boundaries. Do not write files. Return structured JSON only.`,
+    withTaskModel('clarification', {
+      label: 'workflowprogram-develop:clarify',
+      agentType: 'workflowprogram-native-cn:requirement-clarification-lead',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['PASS', 'NEEDS_USER_INPUT', 'BLOCKED'] },
+          questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                lens: { type: 'string' },
+                question: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              required: ['id', 'lens', 'question', 'reason'],
+              additionalProperties: false,
+            },
+          },
+          lensCoverage: { type: 'object' },
+          openQuestions: { type: 'array', items: { type: 'object' } },
+          blockingIssues: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['status', 'questions', 'lensCoverage', 'openQuestions', 'blockingIssues'],
+        additionalProperties: false,
+      },
+    }),
+  )
+  if (clarificationResult.status === 'BLOCKED') {
+    return respond('BLOCKED_INPUT', {
+      blockingIssues: blockingIssues(clarificationResult, 'Clarification agent blocked.'),
+      clarificationResult,
+      nextAction: 'REINVOKE_WITH_ANSWERS',
+    })
+  }
+  questions = asArray(clarificationResult.questions).filter(item => nonEmpty(item?.question))
+  if (questions.length === 0) {
+    questions = [...missingLenses.map(fallbackQuestion), ...openQuestions]
+  }
   return respond('NEEDS_USER_INPUT', {
     questions,
+    missingLenses: missingLenses.map(lens => lens.id),
+    lensCoverage: clarificationResult.lensCoverage,
+    clarificationResult,
     nextAction: 'REINVOKE_WITH_ANSWERS',
   })
 }

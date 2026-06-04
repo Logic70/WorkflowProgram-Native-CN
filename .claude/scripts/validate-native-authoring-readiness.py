@@ -9,18 +9,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from lib.clarification_utils import LOGIC_LENSES
 from lib.io_utils import write_json
 
 
-REQUIRED_LENSES = [
-    "purpose",
-    "object_model",
-    "process_model",
-    "decision_model",
-    "evidence_model",
-    "acceptance_model",
-    "boundary_model",
-]
+REQUIRED_LENSES = [lens["key"] for lens in LOGIC_LENSES]
+RUNTIME_TO_LEGACY_LENSES = {
+    lens.get("runtime_key", lens["key"]): lens["key"]
+    for lens in LOGIC_LENSES
+}
+ALLOWED_LENS_KEYS = set(REQUIRED_LENSES) | set(RUNTIME_TO_LEGACY_LENSES)
 
 
 def error(rule: str, message: str) -> dict[str, str]:
@@ -37,6 +35,25 @@ def has_content(value: Any) -> bool:
     if isinstance(value, (list, dict)):
         return bool(value)
     return False
+
+
+def normalize_lenses(lenses: dict[str, Any], errors: list[dict[str, str]]) -> dict[str, Any]:
+    """Return legacy-keyed lens content while rejecting unmapped key sets."""
+
+    normalized: dict[str, Any] = {}
+    for key, value in lenses.items():
+        if key not in ALLOWED_LENS_KEYS:
+            errors.append(
+                error(
+                    "LENS_KEY_UNMAPPED",
+                    f"`lenses.{key}` is not a known WorkflowProgram logic lens key.",
+                )
+            )
+            continue
+        normalized_key = RUNTIME_TO_LEGACY_LENSES.get(key, key)
+        if normalized_key not in normalized or not has_content(normalized.get(normalized_key)):
+            normalized[normalized_key] = value
+    return normalized
 
 
 def validate_readiness(path: Path, expected_target_root: Path | None = None) -> dict[str, Any]:
@@ -80,6 +97,7 @@ def validate_readiness(path: Path, expected_target_root: Path | None = None) -> 
     if not isinstance(lenses, dict):
         errors.append(error("LENSES_REQUIRED", "`lenses` must be an object."))
         lenses = {}
+    lenses = normalize_lenses(lenses, errors)
     for lens in REQUIRED_LENSES:
         if not has_content(lenses.get(lens)):
             errors.append(error("LENS_REQUIRED", f"`lenses.{lens}` must be clarified before generation."))

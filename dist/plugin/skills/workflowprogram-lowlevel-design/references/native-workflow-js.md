@@ -31,6 +31,8 @@ Define prompt, label, schema, consumed fields, and failure behavior. Any field r
 
 Keep workflow-specific prompts inline. Extract reusable Agents only for cross-workflow reuse, independent invocation, independent permissions, or separately versioned long prompts.
 
+Named semantic roles are reusable assets, not prompt decorations. If a role such as requirement clarification lead, design reviewer, workflow designer, or authoring spec generator owns durable definitions or is referenced by multiple skills/workflows, define it as a dedicated Agent or shared reference and call it through `agentType`. Do not emulate the role by writing "you are <role>" inside a foreground prompt. JS should pass task-local inputs and enforce gates; the Agent/reference should own the reusable semantics; validators should enforce required fields and handoff completeness.
+
 ## Validation Layers
 
 | Layer | Responsibility | Implementation |

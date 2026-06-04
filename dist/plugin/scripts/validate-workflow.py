@@ -477,8 +477,10 @@ def validate_required_paths(root: Path, result: ValidationResult) -> None:
         ".claude/scripts/quality-gate.py",
         "${CLAUDE_PLUGIN_ROOT}/scripts/validate-workflow.ps1",
         ".claude/scripts/validate-workflow.py",  # Self-check
+        ".claude/agents/requirement-clarification-lead.md",
         ".claude/agents/workflow-design-reviewer.md",
         ".claude/skills/workflowprogram-native-develop/SKILL.md",
+        ".claude/skills/workflow-spec-support/logic-lenses.md",
         ".claude/workflows/workflowprogram-native-authoring.js",
         *[f".claude/workflows/{name}" for name in PRODUCT_NATIVE_WORKFLOW_FILES],
         ".claude-plugin/plugin.json",
@@ -550,6 +552,39 @@ def validate_required_paths(root: Path, result: ValidationResult) -> None:
             result.add_pass(f"Plugin executable has git mode 100755: {relative_path}")
         else:
             result.add_error(f"Plugin executable git mode must be 100755: {relative_path} is {git_mode}")
+
+
+def validate_logic_lens_definition_drift(root: Path, result: ValidationResult) -> None:
+    """Ensure human-readable and machine-readable logic lens definitions stay aligned."""
+
+    lens_doc = root / ".claude" / "skills" / "workflow-spec-support" / "logic-lenses.md"
+    if not lens_doc.exists():
+        result.add_error("Missing logic lens definition doc: .claude/skills/workflow-spec-support/logic-lenses.md")
+        return
+
+    script_root = root / ".claude" / "scripts"
+    if str(script_root) not in sys.path:
+        sys.path.insert(0, str(script_root))
+    try:
+        from lib.clarification_utils import LOGIC_LENSES
+    except Exception as exc:
+        result.add_error(f"Cannot import LOGIC_LENSES for drift check: {exc}")
+        return
+
+    text = lens_doc.read_text(encoding="utf-8")
+    for lens in LOGIC_LENSES:
+        fields = [
+            ("runtime_key", lens.get("runtime_key", lens["key"])),
+            ("legacy_key", lens["key"]),
+            ("title", lens["title"]),
+            ("task", lens["task"]),
+            ("question", lens["question"]),
+        ]
+        for field_name, value in fields:
+            if value in text:
+                result.add_pass(f"Logic lens doc includes {lens['key']} {field_name}")
+            else:
+                result.add_error(f"Logic lens doc missing {lens['key']} {field_name}: {value}")
 
 
 def validate_document_contracts(root: Path, result: ValidationResult) -> None:
@@ -1346,7 +1381,10 @@ def validate_dist_plugin(root: Path, plugin_meta: Optional[Dict[str, Any]], resu
         dist_root / "scripts" / "workflow-entry.py",
         dist_root / "scripts" / "workflow-runner.py",
         dist_root / "scripts" / "workflow-s5-judge.py",
+        dist_root / "agents" / "requirement-clarification-lead.md",
+        dist_root / "agents" / "workflow-design-reviewer.md",
         dist_root / "skills" / "workflowprogram-native-develop" / "SKILL.md",
+        dist_root / "skills" / "workflow-spec-support" / "logic-lenses.md",
         dist_root / "workflows" / "workflowprogram-native-authoring.js",
         *[dist_root / "workflows" / name for name in PRODUCT_NATIVE_WORKFLOW_FILES],
     ]
@@ -1525,6 +1563,7 @@ def main():
     # 这里的顺序是刻意安排的：先确保文件存在并解析 settings，
     # 后续检查才能安全假定核心仓库结构已经成立。
     validate_required_paths(root, result)
+    validate_logic_lens_definition_drift(root, result)
     settings = validate_settings_json(root, result)
 
     if settings:

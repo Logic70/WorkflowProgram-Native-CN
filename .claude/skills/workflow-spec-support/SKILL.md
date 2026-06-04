@@ -17,6 +17,7 @@ internal: true
 ## Assets
 
 - `spec-template.md`
+- `logic-lenses.md`
 
 ## Rules
 

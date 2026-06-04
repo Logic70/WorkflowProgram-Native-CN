@@ -60,10 +60,12 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'))
 const source = fs.readFileSync(payload.script, 'utf8').replace('export const meta =', 'const meta =')
 const phases = []
 const labels = []
+const agentTypes = []
 const queuedAgentResults = [...payload.agentResults]
 const phase = title => phases.push(title)
 const agent = async (_prompt, options) => {
   labels.push(options?.label || '')
+  agentTypes.push(options?.agentType || null)
   if (queuedAgentResults.length === 0) {
     throw new Error('Mock Agent result queue is empty')
   }
@@ -82,7 +84,7 @@ const workflow = async () => {
 }
 const run = new Function('args', 'phase', 'agent', 'parallel', 'pipeline', 'workflow', `return (async () => { ${source}\n })()`)
 run(payload.args, phase, agent, parallel, pipeline, workflow)
-  .then(result => console.log(JSON.stringify({ result, phases, labels })))
+  .then(result => console.log(JSON.stringify({ result, phases, labels, agentTypes })))
   .catch(error => {
     console.error(error.stack || String(error))
     process.exit(1)
@@ -1411,10 +1413,51 @@ def test_develop_native_workflow_requests_missing_lenses() -> None:
             "confirmedByUser": False,
         }
     )
+    questions = [
+        {
+            "id": lens,
+            "lens": lens,
+            "question": f"What design fact is required for {lens}?",
+            "reason": f"{lens} changes the workflow design.",
+        }
+        for lens in [
+            "objectModel",
+            "processModel",
+            "decisionModel",
+            "evidenceModel",
+            "acceptanceModel",
+            "boundaryModel",
+        ]
+    ]
 
-    execution = execute_native_workflow(DEVELOP_WORKFLOW, payload)
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        payload,
+        agent_results=[
+            {
+                "status": "NEEDS_USER_INPUT",
+                "questions": questions,
+                "lensCoverage": {
+                    "purpose": {"status": "complete", "summary": "Goal exists."},
+                    "objectModel": {"status": "missing", "summary": ""},
+                },
+                "openQuestions": [],
+                "blockingIssues": [],
+            }
+        ],
+    )
 
     assert execution["result"]["status"] == "NEEDS_USER_INPUT"
+    assert execution["labels"] == ["workflowprogram-develop:clarify"]
+    assert execution["agentTypes"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
+    assert execution["result"]["missingLenses"] == [
+        "objectModel",
+        "processModel",
+        "decisionModel",
+        "evidenceModel",
+        "acceptanceModel",
+        "boundaryModel",
+    ]
     assert {item["id"] for item in execution["result"]["questions"]} == {
         "objectModel",
         "processModel",

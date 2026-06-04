@@ -10,6 +10,7 @@ Apply after the general `$lowlevel-design` checklist.
 - Is `.claude/workflows/*.js` the explicit Native-mode runtime truth?
 - Does every authoring Stage declare entry, actions, outputs, gate, failure, owned files, and evidence?
 - Are workflow-specific Agents inline by default?
+- Are reusable semantic roles and durable lens definitions extracted to dedicated Agents or shared references instead of prompt-only role emulation?
 - Are reusable skills, Agents, scripts, and metadata conditional?
 - Does each old runtime capability have retain / replace / narrow / remove and verification decisions?
 

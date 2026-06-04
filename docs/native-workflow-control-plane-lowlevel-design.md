@@ -133,7 +133,7 @@ project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ nam
 | Stage | Purpose | Entry | Actions | Outputs | Gate | Failure | Owned Files | Evidence |
 |---|---|---|---|---|---|---|---|---|
 | D0 Intake / Route | 识别 create / update 和目标目录 | 初始 args | 读取目标目录，判定 legacy / native 状态 | normalized request | 目标目录明确 | `BLOCKED_INPUT` | 无 | route summary |
-| D1 Clarify | 收敛七个 logic lenses | normalized request、已有答案 | Agent 生成缺失问题；JS 判断是否仍需提问 | questions 或 requirement packet | lenses 完整、无开放问题 | `NEEDS_USER_INPUT` | 可选 run evidence | clarification result |
+| D1 Clarify | 收敛七个 logic lenses | normalized request、已有答案 | `requirement-clarification-lead` Agent 基于共享 lens 定义生成缺失问题；JS 判断是否仍需提问 | questions 或 requirement packet | lenses 完整、无开放问题、澄清 agent 输出 schema 合法 | `NEEDS_USER_INPUT` | 可选 run evidence | clarification result、lens coverage |
 | D2 Confirm | 获得用户确认 | requirement packet | 检查 `confirmedByUser` | confirmed packet | `confirmedByUser=true` | `READY_FOR_CONFIRMATION` | 可选 run evidence | confirmation result |
 | D3 Design | 生成 High-Level 和 Low-Level 设计 | confirmed packet、目标上下文 | 并行探索；串行整合 HLD、LLD、trace | design docs | 边界、输入输出、gate、测试完整 | `BLOCKED_DESIGN` | candidate design docs | design summary |
 | D4 Review | 审视设计闭合 | design docs、requirements | 独立 Agent review；JS 过滤 blocker | review verdict、issues | 无 blocker | `BLOCKED_DESIGN_REVIEW` | review report | closure report |
@@ -250,6 +250,30 @@ Authoring Spec Agent 的输出 schema：
 
 前台 Skill 在 Step 4 只能把该对象原样序列化到 `RUN_ROOT/native-workflow-authoring.json`。如果 `READY_FOR_GENERATION` 不含 `authoringSpec`，或磁盘 spec 与 handoff spec 不一致，generator 必须返回 `BLOCKED_GENERATION`。
 
+### 7.1.2 Requirement Clarification Lead Agent
+
+需求澄清是可复用语义角色，不是前台模型或 JS 内联 prompt 的临时说明。稳态实现必须显式声明：
+
+| 责任面 | 文件或机制 | 责任 |
+|---|---|---|
+| 入口 Skill | `workflowprogram-develop` / `workflowprogram-native-develop` | 只负责启动 `workflowprogram-develop.js`、转述问题、带用户回答重入 |
+| 控制面 JS | `workflowprogram-develop.js` D1/D2 | 决定是否返回 `NEEDS_USER_INPUT` / `READY_FOR_CONFIRMATION`，不得复制完整 lens 方法论 |
+| 澄清 Agent | `.claude/agents/requirement-clarification-lead.md` | 拥有七个 logic lenses 的含义、好问题/坏问题、追问顺序、停止条件和输出 schema |
+| 共享定义 | `.claude/skills/workflow-spec-support/logic-lenses.md` 与 `scripts/lib/clarification_utils.py::LOGIC_LENSES` | 分别提供人类可读定义和机器可读定义；字段名、title、task、question 必须可追踪 |
+| 确定性校验 | `validate-workflow-draft.py`、`validate-native-authoring-readiness.py` 或后继 validator | 检查 lens 覆盖、open questions、用户确认、REQ 映射、process/evidence/acceptance 链接 |
+
+JS 调用必须使用注册角色，例如：
+
+```javascript
+await agent(prompt, {
+  label: 'workflowprogram-develop:clarify',
+  agentType: 'workflowprogram-native-cn:requirement-clarification-lead',
+  schema: clarificationSchema
+})
+```
+
+禁止使用前台 prompt 中的“你是 requirement-clarification-lead / workflow-designer”来代替注册 Agent。若 lens 定义在 `logic-lenses.md` 与 `clarification_utils.py` 之间漂移，验证阶段必须失败或至少产生 blocking issue。
+
 ### 7.2 Skill 定义
 
 Skill 适用：
@@ -314,6 +338,8 @@ Native JS 只请求 smoke 或消费 smoke evidence，不在后台脚本内直接
 ```
 
 `operation` 枚举：`create | update | migrate`。
+
+`workflowprogram-develop.js` 的运行态 args 继续使用 `purpose`、`objectModel`、`processModel`、`decisionModel`、`evidenceModel`、`acceptanceModel`、`boundaryModel`。旧 S1 草案、`clarification_utils.py` 和 M7 readiness 兼容资产可继续保留 `object_model` 等 snake_case 键，但共享 lens 定义必须声明两者的单向映射，并在 handoff/validator 中拒绝无映射字段。新产品路径不得再新增第三套 lens key。
 
 Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D9 使用可重入 handoff：
 
@@ -695,6 +721,7 @@ M12 已实现：
 | pure-literal meta | unit | valid / invalid JS | 静态规则正确判定 | validation report |
 | phase / schema / gate | unit | invalid fixtures | 对应规则阻断 | rule IDs |
 | re-entrant clarify | integration | 缺 lens、已补充、已确认 args | 依次返回 `NEEDS_USER_INPUT`、`READY_FOR_CONFIRMATION`、进入设计 | result envelope |
+| clarification agent attribution | integration | D1 调用和 JSONL 子代理记录 | 使用 `workflowprogram-native-cn:requirement-clarification-lead` 注册 agent；不得只在 prompt 中写“你是 ...” | JSONL `attributionAgent`、lens coverage |
 | Plugin Skill discovery | smoke | 已安装 WorkflowProgram 插件 | `skill_listing` 出现入口 Skill | JSONL、transcript |
 | plugin product scriptPath invocation | smoke | 已安装 WorkflowProgram 插件 | `Workflow({ scriptPath, args })` 启动产品 JS | run ID |
 | plugin product name lookup boundary | smoke | 已安装 WorkflowProgram 插件 | `Workflow({ name, args })` 不作为产品入口前提 | JSONL、transcript |
@@ -712,6 +739,7 @@ M12 已实现：
 |---|---|---|---|
 | WorkflowProgram 自身 Native 化 | `workflows/workflowprogram-*.js` | pure-literal `meta` | static validation、interactive smoke |
 | 可重入澄清 | `workflowprogram-develop.js` | result envelope | clarification integration |
+| 澄清语义归属 | `requirement-clarification-lead` Agent、`logic-lenses.md`、`clarification_utils.py` | lens definition map、agent schema、validator checks | attribution fixture、lens drift check |
 | 插件产品路径启动与 saved workflow 名称调用分离 | Plugin Skill、saved workflow registry、Workflow tool | 产品 `{ scriptPath, args }` / saved workflow `{ name, args }` | discovery、launch、negative lookup smoke |
 | JS 执行真源 | target `.claude/workflows/*.js` | script contract | artifact scope check |
 | 三层验证 | JS、schema、scripts | L1 / L2 / L3 | fixture、external-fact smoke |

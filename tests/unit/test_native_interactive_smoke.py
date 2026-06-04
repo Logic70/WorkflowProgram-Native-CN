@@ -241,6 +241,50 @@ def test_evaluate_classifies_complete_pass_evidence(tmp_path: Path) -> None:
     assert len(payload["matching_lines"]["completed_pass"]) > 0
 
 
+def test_evaluate_passes_with_required_agent_attribution(tmp_path: Path) -> None:
+    jsonl = tmp_path / "pass-attribution.jsonl"
+    records = _build_pass_jsonl_lines()
+    records[4]["agentType"] = "workflowprogram-native-cn:requirement-clarification-lead"
+    write_jsonl(jsonl, records)
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", WORKFLOW,
+        "--expected-status", "PASS",
+        "--required-agent-attribution", "workflowprogram-native-cn:requirement-clarification-lead",
+        "--json",
+    )
+
+    assert completed.returncode == 0, f"stderr={completed.stderr}"
+    payload = load_json(completed)
+    assert payload["status"] == "PASS"
+    assert payload["agentAttributions"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
+    assert payload["missingAgentAttributions"] == []
+
+
+def test_evaluate_blocks_missing_required_agent_attribution(tmp_path: Path) -> None:
+    jsonl = tmp_path / "missing-attribution.jsonl"
+    write_jsonl(jsonl, _build_pass_jsonl_lines())
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", WORKFLOW,
+        "--expected-status", "PASS",
+        "--required-agent-attribution", "workflowprogram-native-cn:requirement-clarification-lead",
+        "--json",
+    )
+
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "INCONCLUSIVE"
+    assert payload["missingAgentAttributions"] == [
+        "workflowprogram-native-cn:requirement-clarification-lead"
+    ]
+    assert any("required agent attribution" in issue for issue in payload["blockingIssues"])
+
+
 def test_evaluate_classifies_complete_blocked_evidence(tmp_path: Path) -> None:
     jsonl = tmp_path / "blocked.jsonl"
     write_jsonl(

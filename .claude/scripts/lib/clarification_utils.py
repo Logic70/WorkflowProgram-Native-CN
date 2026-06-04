@@ -56,6 +56,7 @@ COMPLEXITY_ORDER = {"S": 1, "M": 2, "L": 3, "XL": 4}
 LOGIC_LENSES: List[Dict[str, str]] = [
     {
         "key": "purpose",
+        "runtime_key": "purpose",
         "draft_key": "lens_purpose",
         "title": "Purpose Lens",
         "task": "Convert the request from desired artifact into observable purpose and success signal.",
@@ -63,6 +64,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "object_model",
+        "runtime_key": "objectModel",
         "draft_key": "lens_object_model",
         "title": "Object Lens",
         "task": "Identify input, intermediate, and output objects plus source-of-truth rules.",
@@ -70,6 +72,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "process_model",
+        "runtime_key": "processModel",
         "draft_key": "lens_process_model",
         "title": "Process Lens",
         "task": "Decompose the work into meaningful target workflow steps or node candidates.",
@@ -77,6 +80,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "decision_model",
+        "runtime_key": "decisionModel",
         "draft_key": "lens_decision_model",
         "title": "Decision Lens",
         "task": "Expose branching choices, decision inputs, fallbacks, confidence, and owners.",
@@ -84,6 +88,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "evidence_model",
+        "runtime_key": "evidenceModel",
         "draft_key": "lens_evidence_model",
         "title": "Evidence Lens",
         "task": "Define evidence required to trust outputs, decisions, and intermediate models.",
@@ -91,6 +96,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "acceptance_model",
+        "runtime_key": "acceptanceModel",
         "draft_key": "lens_acceptance_model",
         "title": "Acceptance Lens",
         "task": "Turn clarified logic into concrete scenarios and expected outputs.",
@@ -98,6 +104,7 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
     {
         "key": "boundary_model",
+        "runtime_key": "boundaryModel",
         "draft_key": "lens_boundary_model",
         "title": "Boundary Lens",
         "task": "Define non-goals, stop conditions, manual confirmations, and degradation rules.",
@@ -105,6 +112,15 @@ LOGIC_LENSES: List[Dict[str, str]] = [
     },
 ]
 LOGIC_LENS_KEYS = [lens["key"] for lens in LOGIC_LENSES]
+LOGIC_LENS_RUNTIME_KEYS = [lens["runtime_key"] for lens in LOGIC_LENSES]
+LOGIC_LENS_RUNTIME_TO_LEGACY = {
+    lens["runtime_key"]: lens["key"]
+    for lens in LOGIC_LENSES
+}
+LOGIC_LENS_LEGACY_TO_RUNTIME = {
+    lens["key"]: lens["runtime_key"]
+    for lens in LOGIC_LENSES
+}
 CORE_LOGIC_LENS_KEYS = {"purpose", "object_model", "acceptance_model", "boundary_model"}
 GENERIC_QUESTION_RE = re.compile(
     r"(边界场景|输入输出|约束|需求|还有什么|还有哪些|是否还有|"

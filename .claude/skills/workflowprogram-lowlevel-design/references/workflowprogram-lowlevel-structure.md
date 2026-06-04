@@ -9,6 +9,7 @@ Apply this addendum after the general `$lowlevel-design` structure.
 ## Authoring Stage 详细设计
 ## 目标 Native Workflow JS 文件契约
 ## Agent、Skill 与领域脚本边界
+## 可复用语义角色与澄清模型归属
 ## L1 / L2 / L3 验证契约
 ## 轻量静态校验器规则
 ## Controlled Update 与 Drift 检测
@@ -45,6 +46,7 @@ Classify at least:
 | `.claude/workflows/*.js` | authoritative executable control plane | required for Native mode |
 | `.claude/skills/` | optional reusable instructions or thin router | explicit generation condition |
 | `.claude/agents/` | optional reusable roles | explicit extraction condition |
+| shared role/lens references | reusable semantic definitions | required when roles or lenses are consumed by more than one skill/workflow |
 | `.claude/scripts/` | optional deterministic domain scripts | explicit external-fact need |
 | `.workflowprogram/design/` | optional authoring metadata | retention need |
 | `.workflowprogram/runs/` | optional authoring evidence | retention need |

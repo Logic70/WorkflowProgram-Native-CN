@@ -216,12 +216,14 @@ const phases = []
 const labels = []
 const models = []
 const modelProperties = []
+const agentTypes = []
 const queuedAgentResults = [...payload.agentResults]
 const phase = title => phases.push(title)
 const agent = async (_prompt, options) => {
   labels.push(options?.label || '')
   models.push(options?.model || null)
   modelProperties.push(Object.prototype.hasOwnProperty.call(options || {}, 'model'))
+  agentTypes.push(options?.agentType || null)
   if (queuedAgentResults.length === 0) {
     const err = new Error('Mock Agent result queue is empty')
     console.error(err.stack || String(err))
@@ -242,7 +244,7 @@ const workflow = async () => {
 }
 const run = new Function('args', 'phase', 'agent', 'parallel', 'pipeline', 'workflow', `return (async () => { ${source}\n })()`)
 run(payload.args, phase, agent, parallel, pipeline, workflow)
-  .then(result => console.log(JSON.stringify({ result, phases, labels, models, modelProperties })))
+  .then(result => console.log(JSON.stringify({ result, phases, labels, models, modelProperties, agentTypes })))
   .catch(error => {
     console.error(error.stack || String(error))
     process.exit(1)
@@ -354,6 +356,54 @@ def test_develop_task_models_passed_to_agents() -> None:
     assert models[2] == "deepseek-v4-pro[1M]"    # design
     assert models[3] == "deepseek-v4-pro[1M]"    # review
     assert models[4] == "deepseek-v4-pro[1M]"    # author
+
+
+def test_develop_clarification_task_model_passed_to_agent() -> None:
+    """Incomplete D1 clarification uses the registered clarification agent and task model."""
+    base_args = {
+        "request": "Create a code review workflow.",
+        "targetRoot": "/tmp/target",
+        "runRoot": "/tmp/run",
+        "operation": "create",
+        "runId": "test-run-clarify",
+        "clarification": {
+            "lenses": {"purpose": "Create a code review workflow."},
+            "confirmedByUser": False,
+        },
+        "taskModels": {
+            "clarification": "deepseek-v4-flash[1M]",
+        },
+    }
+
+    harness_result = execute_workflow_js(
+        DEVELOP_JS,
+        base_args,
+        agent_results=[
+            {
+                "status": "NEEDS_USER_INPUT",
+                "questions": [
+                    {
+                        "id": "objectModel",
+                        "lens": "objectModel",
+                        "question": "Which artifact must exist before the review decision?",
+                        "reason": "The answer changes the workflow object model.",
+                    }
+                ],
+                "lensCoverage": {
+                    "purpose": {"status": "complete", "summary": "Goal exists."},
+                    "objectModel": {"status": "missing", "summary": ""},
+                },
+                "openQuestions": [],
+                "blockingIssues": [],
+            }
+        ],
+    )
+
+    assert harness_result["result"]["status"] == "NEEDS_USER_INPUT"
+    assert harness_result["labels"] == ["workflowprogram-develop:clarify"]
+    assert harness_result["agentTypes"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
+    assert harness_result["models"] == ["deepseek-v4-flash[1M]"]
+    assert harness_result["modelProperties"] == [True]
 
 
 def test_develop_default_model_when_task_models_absent() -> None:

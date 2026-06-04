@@ -45,6 +45,14 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/route-native-control-plane.
 
 ## Step 2: Launch Or Reinvoke Product JS
 
+## Clarification Ownership
+
+D1 clarification semantics are owned by `workflowprogram-native-cn:requirement-clarification-lead`
+and `${CLAUDE_PLUGIN_ROOT}/skills/workflow-spec-support/logic-lenses.md`.
+This skill only relays JS-returned questions to the user and reinvokes the same
+`workflowprogram-develop.js` with accumulated answers. Do not replace the registered
+Agent with foreground prompt role-play.
+
 调用：
 
 ```text

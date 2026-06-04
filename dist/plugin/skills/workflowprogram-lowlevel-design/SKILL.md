@@ -34,11 +34,14 @@ Specify:
 - target directories and files;
 - Native Workflow JS module shape and pure-literal `meta`;
 - phases, Agent prompts, schemas, JS gates, `parallel()`, and `pipeline()`;
+- semantic ownership for reusable prompts and roles: dedicated Agent files or shared references own reusable clarification/review/generation semantics; JS owns ordering and gates; deterministic scripts own enforcement;
 - authoring stages, inputs, outputs, failure states, and evidence;
 - static validator rules and fixtures;
 - controlled-update drift detection;
 - optional skill, reusable Agent, domain script, metadata, and publishing conditions;
 - smoke tests and JSONL evidence.
+
+When a prompt role is reused across product workflows, appears in skill text as a named role, or contains durable definitions such as requirement-clarification lenses, specify it as a reusable Agent or shared reference. Do not rely on ad hoc prompts like "you are <role>" from the foreground model or inline JS to stand in for a registered Agent. Keep workflow-local one-off prompts inline.
 
 ### 3. Decide Each Inherited Capability
 

@@ -336,6 +336,39 @@ M11 v1 已完成：
 - generator/validator 单测覆盖上述负例并保持有效最小样例 PASS。
 - `validate-workflow.py`、`pytest` 目标集、plugin validation 和 dist build 均通过。
 
+### M19. 已实施：需求澄清语义资产收口
+
+问题来源：
+
+- 复盘 FreeSTRIDE 重构会话发现，模型可以在内联 JS 或前台 `Agent` prompt 中写“你是 workflow-designer / requirement-clarification-lead”，但这不等价于调用已注册的 WPN agent。
+- 七个 logic lenses 的含义目前分散在 `workflowprogram-develop` skill、`workflow-spec-support/spec-template.md`、`clarification_utils.py` 和 validator 中。模型能看到“必须使用 lens”，但不一定在 D1 澄清阶段完整掌握每个 lens 的含义、好问题/坏问题和停止条件。
+- `workflowprogram-develop.js` 当前只根据缺失 lens 返回通用问题；稳态应由专用澄清 agent 生成 design-consequential 问题，JS 只负责 gate 和可重入状态。
+
+范围：
+
+- 新增 `.claude/agents/requirement-clarification-lead.md`，集中定义七个 logic lenses、追问顺序、输出 schema、停止条件和 forbidden generic questions。
+- 新增或抽取 `.claude/skills/workflow-spec-support/logic-lenses.md`，作为人类可读的共享 lens 定义；`scripts/lib/clarification_utils.py::LOGIC_LENSES` 继续作为机器可读定义。
+- 在 `workflowprogram-develop.js` D1 阶段通过 `agentType: 'workflowprogram-native-cn:requirement-clarification-lead'` 调用专用 agent，禁止仅靠 prompt 角色扮演。
+- 补充 lens key 映射规则：产品 JS 运行态使用 camelCase，旧 S1/readiness 兼容资产可保留 snake_case；handoff/validator 必须拒绝无法映射的第三套字段。
+- 更新 static validation 或 smoke evaluator，检查 D1 子代理 JSONL 中的 `attributionAgent`，并覆盖“prompt-only role emulation”负例。
+- 更新 `workflowprogram-develop` / `workflowprogram-native-develop` skill 文本，使其只描述薄入口职责，不复制完整 lens 方法论。
+
+准出条件：
+
+- D1 re-entrant clarification fixture 证明缺 lens 时调用注册的 `requirement-clarification-lead` agent，并返回带 lens coverage 的结构化问题。
+- JSONL evidence 中能看到 `attributionAgent=workflowprogram-native-cn:requirement-clarification-lead` 或等价插件 agent 归因。
+- validator 覆盖：缺 lens、open question 未闭合、无 REQ 映射、process/evidence/acceptance 链接缺失、prompt-only role emulation。
+- `logic-lenses.md` 与 `clarification_utils.py::LOGIC_LENSES` 的 title/task/question 映射有 drift 检查。
+- `validate-workflow.py`、目标单测和插件校验通过。
+
+实施落点：
+
+- `.claude/agents/requirement-clarification-lead.md` 成为 D1 澄清复用 Agent。
+- `.claude/skills/workflow-spec-support/logic-lenses.md` 成为人类可读共享 lens 定义。
+- `workflowprogram-develop.js` 在缺失 lens 或存在 open question 时调用 `workflowprogram-native-cn:requirement-clarification-lead`，并保留 JS re-entry gate。
+- `validate-native-authoring-readiness.py` 接受 camelCase runtime key 与 snake_case legacy key，并拒绝无法映射的第三套 lens key。
+- `build-native-interactive-smoke.py evaluate` 支持 `--required-agent-attribution`，用于检查真实 JSONL 中的注册 Agent 归因。
+
 ### M14. 已完成：Legacy 下线评估
 
 当前状态：
@@ -395,7 +428,7 @@ M11 v1 已完成：
 | resume/cache | 自有恢复和复用 | 使用原生恢复；apply、publish 和外部副作用增加窄化幂等保护 | resume、idempotency、conflict smoke |
 | evidence ledger | 长期证据留存 | 默认使用原生 journal；合规场景按需落盘 | evidence 场景测试 |
 | managed assets | 受控写入和 drift 检测 | 保留在 authoring 阶段 | 冲突 fixture |
-| 首轮需求澄清 | 防止模型基于模糊请求直接设计 | 移入可重入 `workflowprogram-develop.js`；前台只转述问题和重新调用 | `NEEDS_USER_INPUT`、`READY_FOR_CONFIRMATION` fixture |
+| 首轮需求澄清 | 防止模型基于模糊请求直接设计 | 移入可重入 `workflowprogram-develop.js`；M19 收口为专用 `requirement-clarification-lead` Agent + shared lens definition + validator | `NEEDS_USER_INPUT`、`READY_FOR_CONFIRMATION`、Agent attribution、lens drift fixture |
 | WorkflowProgram authoring 后台可见性 | 让用户通过 `/workflows` 观察设计过程 | 五个产品入口均迁移为 Native Workflow JS | 静态校验、Skill listing、`scriptPath` launch、Computer Use `/workflows` smoke |
 | finalizer | 原子发布报告和 marker | 默认删除；有原子发布需求时按领域增加 | 发布测试 |
 | reusable skill | 入口或复用规范 | 仅在路由、复用或兼容时生成 | 安装后调用测试 |
@@ -420,6 +453,7 @@ M11 v1 已完成：
 | plugin product workflow scriptPath launch | M8 | 验证五个产品 JS 被插件分发，并可通过绝对 `scriptPath` 启动 |
 | plugin product workflow negative name lookup | M8 | 记录插件产品 JS 不自动进入 saved workflow registry 的当前边界 |
 | re-entrant clarification fixture | M9 | 验证澄清和确认均由 JS 状态返回控制 |
+| clarification semantic ownership fixture | M19 | 验证 D1 使用注册澄清 agent，lens 定义无漂移，prompt-only role emulation 被拒绝 |
 | candidate-bound develop evidence | M9 | 验证 generation、validation、smoke 和 apply evidence 绑定同一 candidate hash |
 | Interactive smoke harness | M11 | 人工 packet + JSONL evaluator 验证真实 CLI Skill listing、`scriptPath` launch、Agent、schema、PASS 和 blocker 路径；Computer Use adapter 后续增加 |
 | apply idempotency and conflict | M12 | 验证副作用重放安全 |
@@ -458,6 +492,7 @@ M11 v1 已完成：
 | 不同 Claude Code 入口能力不一致 | 每个支持入口单独执行 capability probe |
 | 语义触发失败导致用户误以为必须记忆 slash command | 保留 slash command 作为兜底，但文档默认展示自然语言入口 |
 | 后台 Workflow 在需求未收敛时提前执行 | Native develop JS 先返回 `NEEDS_USER_INPUT` / `READY_FOR_CONFIRMATION`，生成阶段再由 generator `--generation-handoff` 校验 `READY_FOR_GENERATION` handoff；`--readiness` 仅保留为 M7 兼容回退 |
+| 需求澄清角色被 prompt-only 伪调用 | M19 抽取 `requirement-clarification-lead` 注册 Agent 和 shared lens definition；smoke/evaluator 检查 JSONL `attributionAgent`，validator 检查 lens drift 和缺失映射 |
 | 前台模型自由写 JS authoring spec | M18 后由 `workflowprogram-develop:author` 专用 Agent 产出 `authoringSpec`，前台只负责原样落盘，generator 校验 handoff/spec 等价 |
 | 正则静态 validator 漏掉 JS module 语法错误 | M18 后静态 validation 包含 ESM module parse、唯一 meta export 和基础 pipeline/parallel 形态负例 |
 | 把 M7 原型或 M8 分发骨架误认为最终控制面 | 文档明确 M7 是过渡切片；M8 只分发五个入口并验证路径启动；M9-M10C 才迁移 WorkflowProgram 自身业务控制流 |

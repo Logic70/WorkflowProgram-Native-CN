@@ -30,6 +30,7 @@ Describe:
 - modules, classes, functions, commands, jobs, or handlers;
 - public and internal interfaces;
 - dependency direction and ownership;
+- for agentic or control-plane systems, prompt/role semantic assets, orchestration code, and deterministic validators as separate ownership surfaces;
 - configuration, environment, and deployment details;
 - persistence, schemas, state machines, and invariants where applicable.
 
