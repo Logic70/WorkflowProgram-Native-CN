@@ -94,9 +94,11 @@ Workflow({
 
 M15 已将 product handoff 作为主路径；generator 仍是宿主侧 deterministic renderer，不拥有控制顺序：
 
-1. 将产品 JS 返回的 `READY_FOR_GENERATION` handoff envelope 写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json`（包含 `status`、`workflow`、`runId`、`targetRoot`、`runRoot`、`designEvidence`、`reviewEvidence`、`generationRequest`）。
+1. 将产品 JS 返回的 `READY_FOR_GENERATION` handoff envelope 写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json`（包含 `status`、`workflow`、`runId`、`targetRoot`、`runRoot`、`designEvidence`、`reviewEvidence`、`authoringSpec`、`generationRequest`）。
 
-2. 执行 staging，不传 `--apply`：
+2. 将 handoff 中的 `authoringSpec` 原样序列化为 `RUN_ROOT/native-workflow-authoring.json`。不得根据 `designEvidence.lowLevelDesign`、聊天记录或模型自由判断重写 JS body；如果 `authoringSpec` 缺失或需要修改，必须重新调用产品 JS 的 Author 阶段，而不是前台手写。
+
+3. 执行 staging，不传 `--apply`：
 
 ```text
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/generate-native-workflow.py \
@@ -107,11 +109,11 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/generate-native-workflow.py
   --json
 ```
 
-`--generation-handoff` 是 M15 主路径。Generator 会验证 handoff status=`READY_FOR_GENERATION`、workflow、targetRoot/runRoot 匹配、generationRequest、designEvidence 和 reviewEvidence。非法或 stale handoff 阻断 candidate 写入并落盘结构化验证报告。
+`--generation-handoff` 是 M15+M18 主路径。Generator 会验证 handoff status=`READY_FOR_GENERATION`、workflow、targetRoot/runRoot 匹配、generationRequest、designEvidence、reviewEvidence 和 authoringSpec，并验证磁盘 spec 与 handoff authoringSpec 等价。非法、stale 或被前台改写的 handoff 阻断 candidate 写入并落盘结构化验证报告。
 
 Generator 将 handoff 验证结果写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff.json`（schema `native-workflow-generation-handoff-validation`）。
 
-3. 规范化 generation evidence：
+4. 规范化 generation evidence：
 
 ```text
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-evidence.py generation \

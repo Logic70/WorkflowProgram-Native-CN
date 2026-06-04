@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-03T09:21:32Z",
+  "generated_at": "2026-06-03T10:16:00Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.1",
-  "source_commit": "386e6812b30ab9b72de9ad7b3966f788a4c9c923",
+  "source_commit": "5869c9227fe9af7bc17033b041acf4d69a309564",
   "source_dirty": true,
   "files": [
     {
@@ -224,8 +224,8 @@
     },
     {
       "path": "scripts/generate-native-workflow.py",
-      "sha256": "03b0507d8a6da1e692ed9b130bd34aa717995e2cd9e534db0eeea6fa8c5145db",
-      "size": 29848
+      "sha256": "2d1090e22f672ab841ee06d0948adeca9f6a0c7e505f6b873c8a50002ff60afc",
+      "size": 36659
     },
     {
       "path": "scripts/generate-target-runtime.py",
@@ -424,8 +424,8 @@
     },
     {
       "path": "scripts/validate-native-workflow-js.py",
-      "sha256": "75cd3267f79773c26669a1123ac45a1b082aa98684d438a995f5102520b3ef32",
-      "size": 10727
+      "sha256": "952e92a7a41052cb03cc8db9993e49798eb94f848c3dc6f206a3c4698846c0c9",
+      "size": 16866
     },
     {
       "path": "scripts/validate-publish-eligibility.py",
@@ -684,8 +684,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "4f2b6cd237d30ce1045596fbff58d9ccf9ff9d65791e320f576cef9c2de1ae14",
-      "size": 7868
+      "sha256": "123cf1049b18081190600f2658d2fb626f1d031432d471cb3280a86613e835d1",
+      "size": 8302
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -709,8 +709,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "5c95f72c608eab6a1bbeb1765a9df3f0fd55354cf3fb9db2b2bc82ccfb7a7cda",
-      "size": 12192
+      "sha256": "42d181c6964a7f9fcbfe1d481e2717c082a48b9cdbc5c041fbae98d999d6917a",
+      "size": 15597
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

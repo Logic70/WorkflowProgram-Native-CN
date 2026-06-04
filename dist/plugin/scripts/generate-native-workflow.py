@@ -23,6 +23,12 @@ from lib.io_utils import write_json
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 AGENT_CALL_PATTERN = re.compile(r"(?<![\w$])agent\s*\(")
+AUTHORING_BODY_FORBIDDEN = {
+    "AUTHORING_BODY_CONTAINS_META": re.compile(r"\bexport\s+const\s+meta\s*="),
+    "AUTHORING_BODY_CONTAINS_IMPORT": re.compile(r"^\s*import\s+", re.MULTILINE),
+    "AUTHORING_BODY_CONTAINS_MODULE_EXPORTS": re.compile(r"\bmodule\.exports\b"),
+    "AUTHORING_BODY_CONTAINS_REQUIRE": re.compile(r"\brequire\s*\("),
+}
 SUPPORTING_ASSET_RULES = {
     "skill": (".claude/skills/", "/SKILL.md"),
     "agent": (".claude/agents/", ".md"),
@@ -47,6 +53,106 @@ def load_validator_module():
 
 HANDOFF_SCHEMA_VERSION = 1
 HANDOFF_SCHEMA_NAME = "native-workflow-generation-handoff-validation"
+
+
+def strip_js_string_literals(text: str) -> str:
+    """Remove string literal text while preserving template expressions."""
+
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char in {"'", '"'}:
+            index = skip_quoted_literal(text, index, char)
+            continue
+        if char == "`":
+            index = strip_template_literal(text, index, out)
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def skip_quoted_literal(text: str, index: int, quote: str) -> int:
+    """Return the index after a single or double quoted literal."""
+
+    index += 1
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == quote:
+            return index + 1
+        index += 1
+    return index
+
+
+def find_template_expression_end(text: str, index: int) -> int:
+    """Return the closing brace index for a template `${...}` expression."""
+
+    depth = 1
+    quote: str | None = None
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return len(text)
+
+
+def strip_template_literal(text: str, index: int, out: list[str]) -> int:
+    """Skip template text but keep stripped `${...}` expression code."""
+
+    index += 1
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if char == "`":
+            return index + 1
+        if char == "$" and index + 1 < len(text) and text[index + 1] == "{":
+            end = find_template_expression_end(text, index + 2)
+            expression = text[index + 2:end]
+            out.append(strip_js_string_literals(expression))
+            index = end + 1 if end < len(text) else end
+            continue
+        index += 1
+    return index
+
+
+def validate_authoring_body(body: str) -> None:
+    """Reject full JS modules and unsupported module boundaries in authoring body."""
+
+    executable_text = strip_js_string_literals(body)
+    for rule, pattern in AUTHORING_BODY_FORBIDDEN.items():
+        if pattern.search(executable_text):
+            raise ValueError(f"{rule}: `body` must contain only the executable body after the generated meta header.")
 
 
 def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str, Any]:
@@ -159,6 +265,18 @@ def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str,
         if not gen_rule:
             errors.append({"rule": "HANDOFF_GENERATION_REQUEST_RULE_EMPTY", "message": "generationRequest.rule must be a non-empty string."})
 
+    # --- authoringSpec --------------------------------------------------------
+    authoring_spec = packet.get("authoringSpec")
+    if not isinstance(authoring_spec, dict):
+        errors.append({"rule": "HANDOFF_AUTHORING_SPEC_MISSING", "message": "authoringSpec object is required."})
+    else:
+        for field in ("name", "description", "body"):
+            if not isinstance(authoring_spec.get(field), str) or not authoring_spec[field].strip():
+                errors.append({"rule": f"HANDOFF_AUTHORING_SPEC_{field.upper()}", "message": f"authoringSpec.{field} must be a non-empty string."})
+        phases = authoring_spec.get("phases")
+        if not isinstance(phases, list) or not phases:
+            errors.append({"rule": "HANDOFF_AUTHORING_SPEC_PHASES", "message": "authoringSpec.phases must be a non-empty array."})
+
     # --- designEvidence -------------------------------------------------------
     design_ev = packet.get("designEvidence")
     if not isinstance(design_ev, dict):
@@ -218,10 +336,9 @@ def load_readiness_validator_module():
     return module
 
 
-def load_authoring_spec(path: Path) -> dict[str, Any]:
-    """Load and validate the minimal JSON authoring spec."""
+def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
+    """Validate and normalize one JSON authoring spec payload."""
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("Authoring spec must be a JSON object.")
     name = str(payload.get("name", "")).strip()
@@ -252,6 +369,7 @@ def load_authoring_spec(path: Path) -> dict[str, Any]:
         normalized_phases.append(normalized)
     if not isinstance(body, str) or not body.strip():
         raise ValueError("`body` must be a non-empty JavaScript string.")
+    validate_authoring_body(body)
     supporting_assets = normalize_supporting_assets(payload.get("supporting_assets", []))
     task_model_policy = normalize_task_model_policy(payload.get("task_model_policy"))
     return {
@@ -262,6 +380,28 @@ def load_authoring_spec(path: Path) -> dict[str, Any]:
         "supporting_assets": supporting_assets,
         "task_model_policy": task_model_policy,
     }
+
+
+def load_authoring_spec(path: Path) -> dict[str, Any]:
+    """Load and validate the minimal JSON authoring spec."""
+
+    return normalize_authoring_spec_payload(json.loads(path.read_text(encoding="utf-8")))
+
+
+def validate_handoff_spec_alignment(spec: dict[str, Any], handoff_path: Path) -> list[dict[str, str]]:
+    """Ensure the disk spec is exactly the product JS authoringSpec."""
+
+    errors: list[dict[str, str]] = []
+    try:
+        packet = json.loads(handoff_path.read_text(encoding="utf-8"))
+        handoff_spec = normalize_authoring_spec_payload(packet.get("authoringSpec"))
+    except Exception as exc:
+        return [{"rule": "HANDOFF_AUTHORING_SPEC_INVALID", "message": f"authoringSpec is invalid: {exc}"}]
+    comparable_keys = ("name", "description", "phases", "body", "supporting_assets", "task_model_policy")
+    for key in comparable_keys:
+        if spec.get(key) != handoff_spec.get(key):
+            errors.append({"rule": "HANDOFF_AUTHORING_SPEC_MISMATCH", "message": f"Disk spec field `{key}` does not match READY_FOR_GENERATION.authoringSpec."})
+    return errors
 
 
 def normalize_supporting_assets(value: Any) -> list[dict[str, str]]:
@@ -568,6 +708,26 @@ def main() -> int:
             return 1
 
         spec = load_authoring_spec(spec_path)
+        if gate_mode == "generation-handoff" and handoff_path is not None:
+            alignment_errors = validate_handoff_spec_alignment(spec, handoff_path)
+            if alignment_errors:
+                payload = generation_report(
+                    status="FAIL",
+                    spec_path=spec_path,
+                    target_root=target_root,
+                    run_root=run_root,
+                    candidate_script=None,
+                    target_script=None,
+                    validation_report=None,
+                    readiness_report=readiness_report_path,
+                    generation_handoff_report=generation_handoff_report_path,
+                    apply_requested=args.apply,
+                    supporting_assets=spec["supporting_assets"],
+                    errors=alignment_errors,
+                )
+                write_json(generation_path, payload)
+                emit(payload, args.json)
+                return 1
         candidate_script = candidate_root / ".claude" / "workflows" / f"{spec['name']}.js"
         candidate_script.parent.mkdir(parents=True, exist_ok=True)
         candidate_script.write_text(render_workflow(spec), encoding="utf-8", newline="\n")
@@ -626,6 +786,23 @@ def main() -> int:
         write_json(generation_path, payload)
         emit(payload, args.json)
         return return_code
+    except ValueError as exc:
+        payload = generation_report(
+            status="FAIL",
+            spec_path=spec_path,
+            target_root=target_root,
+            run_root=run_root,
+            candidate_script=None,
+            target_script=None,
+            validation_report=None,
+            readiness_report=readiness_report_path,
+            generation_handoff_report=generation_handoff_report_path,
+            apply_requested=args.apply,
+            errors=[{"rule": "SPEC_INVALID", "message": str(exc)}],
+        )
+        write_json(generation_path, payload)
+        emit(payload, args.json)
+        return 1
     except Exception as exc:
         payload = generation_report(
             status="FAIL",

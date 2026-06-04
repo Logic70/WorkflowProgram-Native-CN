@@ -144,6 +144,14 @@ def pass_review_evidence() -> dict:
     }
 
 
+def pass_authoring_evidence() -> dict:
+    return {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(),
+        "blockingIssues": [],
+    }
+
+
 def pass_generation_evidence() -> dict:
     return {
         "status": "PASS",
@@ -275,16 +283,134 @@ return { status: 'PASS' }
     assert completed.returncode == 0, completed.stderr or completed.stdout
 
 
-def write_authoring_spec(
-    path: Path,
+def test_validator_allows_forbidden_api_words_inside_template_prompt(tmp_path: Path) -> None:
+    script = tmp_path / "template-prompt-word.js"
+    script.write_text(
+        """export const meta = {
+  name: 'template-prompt-word',
+  description: 'Template prompt words are not executable APIs.',
+  phases: [{ title: 'Probe' }],
+}
+
+const context = 'docs'
+phase('Probe')
+await agent(`Review this ${context} and mention require() only as text.`)
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_rejects_forbidden_api_inside_template_expression(tmp_path: Path) -> None:
+    script = tmp_path / "template-expression-api.js"
+    script.write_text(
+        """export const meta = {
+  name: 'template-expression-api',
+  description: 'Template expressions execute and must be checked.',
+  phases: [{ title: 'Probe' }],
+}
+
+const unsafe = `${require('fs')}`
+phase('Probe')
+return { status: unsafe ? 'PASS' : 'BLOCKED' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "FORBIDDEN_API" in {item["rule"] for item in payload["errors"]}
+
+
+def test_validator_rejects_duplicate_meta_export(tmp_path: Path) -> None:
+    script = tmp_path / "duplicate-meta.js"
+    script.write_text(
+        """export const meta = {
+  name: 'duplicate-meta',
+  description: 'Duplicate meta must fail.',
+  phases: [{ title: 'Probe' }],
+}
+
+export const meta = {
+  name: 'second-meta',
+  description: 'This must not be accepted.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "DUPLICATE_META_EXPORT" in {item["rule"] for item in payload["errors"]}
+    assert "MODULE_PARSE_FAILED" in {item["rule"] for item in payload["errors"]}
+
+
+def test_validator_rejects_non_async_await_inside_nested_function(tmp_path: Path) -> None:
+    script = tmp_path / "non-async-await.js"
+    script.write_text(
+        """export const meta = {
+  name: 'non-async-await',
+  description: 'Nested non-async await must fail module parse.',
+  phases: [{ title: 'Probe' }],
+}
+
+function probe() {
+  await agent('This await is not inside an async function.')
+}
+
+phase('Probe')
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "MODULE_PARSE_FAILED" in {item["rule"] for item in payload["errors"]}
+
+
+def test_validator_rejects_pipeline_without_items_argument(tmp_path: Path) -> None:
+    script = tmp_path / "pipeline-no-items.js"
+    script.write_text(
+        """export const meta = {
+  name: 'pipeline-no-items',
+  description: 'Pipeline must start with items.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+await pipeline(async item => item)
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "PIPELINE_SHAPE_INVALID" in {item["rule"] for item in payload["errors"]}
+
+
+def authoring_spec_payload(
     *,
+    name: str = "generated-probe",
     description: str = "Generate a minimal native workflow probe.",
     body: str = "phase('Probe')\n\nreturn { status: 'PASS' }\n",
     supporting_assets: list[dict[str, str]] | None = None,
     task_model_policy: dict | None = None,
-) -> None:
+) -> dict:
     payload = {
-        "name": "generated-probe",
+        "name": name,
         "description": description,
         "phases": [{"title": "Probe", "detail": "Return PASS."}],
         "body": body,
@@ -292,6 +418,25 @@ def write_authoring_spec(
     }
     if task_model_policy is not None:
         payload["task_model_policy"] = task_model_policy
+    return payload
+
+
+def write_authoring_spec(
+    path: Path,
+    *,
+    name: str = "generated-probe",
+    description: str = "Generate a minimal native workflow probe.",
+    body: str = "phase('Probe')\n\nreturn { status: 'PASS' }\n",
+    supporting_assets: list[dict[str, str]] | None = None,
+    task_model_policy: dict | None = None,
+) -> None:
+    payload = authoring_spec_payload(
+        name=name,
+        description=description,
+        body=body,
+        supporting_assets=supporting_assets,
+        task_model_policy=task_model_policy,
+    )
     path.write_text(
         json.dumps(payload, indent=2)
         + "\n",
@@ -519,6 +664,56 @@ def test_generator_does_not_apply_static_validation_failure(tmp_path: Path) -> N
     assert not (target / ".claude" / "workflows" / "generated-probe.js").exists()
 
 
+def test_generator_rejects_full_js_body_with_meta_header(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(
+        spec,
+        body=(
+            "export const meta = {\n"
+            "  name: 'generated-probe',\n"
+            "  description: 'A full JS body must be rejected.',\n"
+            "  phases: [{ title: 'Probe' }],\n"
+            "}\n\n"
+            "phase('Probe')\n"
+            "return { status: 'PASS' }\n"
+        ),
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert payload["errors"][0]["rule"] == "SPEC_INVALID"
+    assert "AUTHORING_BODY_CONTAINS_META" in payload["errors"][0]["message"]
+    assert not (run_root / "outputs" / "candidate").exists()
+
+
+def test_generator_rejects_require_inside_template_expression_body(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(
+        spec,
+        body=(
+            "phase('Probe')\n"
+            "const unsafe = `${require('fs')}`\n"
+            "return { status: unsafe ? 'PASS' : 'BLOCKED' }\n"
+        ),
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert payload["errors"][0]["rule"] == "SPEC_INVALID"
+    assert "AUTHORING_BODY_CONTAINS_REQUIRE" in payload["errors"][0]["message"]
+    assert not (run_root / "outputs" / "candidate").exists()
+
+
 def test_generator_stages_explicit_optional_supporting_assets(tmp_path: Path) -> None:
     spec = tmp_path / "spec.json"
     target = tmp_path / "target"
@@ -641,6 +836,7 @@ def write_handoff_packet(
     workflow: str = "workflowprogram-develop",
     design_evidence: object = _UNSET,
     review_evidence: object = _UNSET,
+    authoring_spec: object = _UNSET,
     generation_request: object = _UNSET,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -688,6 +884,10 @@ def write_handoff_packet(
             "requiredRevisions": [],
             "summary": "Design review is closed.",
         }
+    if authoring_spec is not _UNSET:
+        payload["authoringSpec"] = authoring_spec
+    else:
+        payload["authoringSpec"] = authoring_spec_payload()
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
@@ -913,6 +1113,41 @@ def test_generator_handoff_blocks_missing_generation_request(tmp_path: Path) -> 
     assert "generationRequest" in str(payload["errors"])
 
 
+def test_generator_handoff_blocks_missing_authoring_spec(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_authoring_spec(spec)
+    write_handoff_packet(handoff, target_root=target, run_root=run_root, authoring_spec=None)
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "HANDOFF_AUTHORING_SPEC_MISSING" in {item["rule"] for item in payload["errors"]}
+    assert not (run_root / "outputs" / "candidate").exists()
+
+
+def test_generator_handoff_blocks_authoring_spec_mismatch_before_candidate(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_authoring_spec(spec)
+    mismatched = authoring_spec_payload(body="phase('Probe')\n\nreturn { status: 'PASS', drift: true }\n")
+    write_handoff_packet(handoff, target_root=target, run_root=run_root, authoring_spec=mismatched)
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "HANDOFF_AUTHORING_SPEC_MISMATCH" in {item["rule"] for item in payload["errors"]}
+    assert not (run_root / "outputs" / "candidate").exists()
+
+
 def test_generator_handoff_blocks_non_string_generation_rule(tmp_path: Path) -> None:
     """generationRequest.rule must remain a textual write boundary."""
     spec = tmp_path / "spec.json"
@@ -1084,8 +1319,10 @@ def test_generator_handoff_still_validates_js(tmp_path: Path) -> None:
     run_root = tmp_path / "run"
     handoff = tmp_path / "handoff.json"
     target.mkdir()
-    write_authoring_spec(spec, body="phase('Wrong')\n\nreturn { status: 'PASS' }\n")
-    write_handoff_packet(handoff, target_root=target, run_root=run_root)
+    bad_body = "phase('Wrong')\n\nreturn { status: 'PASS' }\n"
+    bad_authoring_spec = authoring_spec_payload(body=bad_body)
+    write_authoring_spec(spec, body=bad_body)
+    write_handoff_packet(handoff, target_root=target, run_root=run_root, authoring_spec=bad_authoring_spec)
 
     completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
     assert completed.returncode == 1
@@ -1213,12 +1450,14 @@ def test_develop_native_workflow_requests_controlled_generation_after_design_rev
     execution = execute_native_workflow(
         DEVELOP_WORKFLOW,
         develop_args(),
-        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence()],
+        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence(), pass_authoring_evidence()],
     )
 
     assert execution["result"]["status"] == "READY_FOR_GENERATION"
     assert execution["result"]["nextAction"] == "RUN_CONTROLLED_GENERATION"
-    assert execution["phases"] == ["Intake", "Clarify", "Confirm", "Design", "Review", "Generate"]
+    assert execution["result"]["authoringSpec"] == authoring_spec_payload()
+    assert execution["labels"][-1] == "workflowprogram-develop:author"
+    assert execution["phases"] == ["Intake", "Clarify", "Confirm", "Design", "Review", "Author", "Generate"]
 
 
 def test_develop_native_workflow_handoff_includes_target_and_run_root() -> None:
@@ -1232,12 +1471,27 @@ def test_develop_native_workflow_handoff_includes_target_and_run_root() -> None:
     execution = execute_native_workflow(
         DEVELOP_WORKFLOW,
         develop_args(),
-        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence()],
+        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence(), pass_authoring_evidence()],
     )
 
     assert execution["result"]["status"] == "READY_FOR_GENERATION"
     assert execution["result"]["targetRoot"] == "/tmp/native-target"
     assert execution["result"]["runRoot"] == "/tmp/native-run"
+    assert execution["result"]["authoringSpec"] == authoring_spec_payload()
+
+
+def test_develop_native_workflow_blocks_failed_authoring_evidence() -> None:
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            designEvidence=pass_design_evidence(),
+            reviewEvidence=pass_review_evidence(),
+            authoringEvidence={"status": "BLOCKED", "blockingIssues": ["invalid JS body"]},
+        ),
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_GENERATION"
+    assert execution["result"]["blockingIssues"] == ["invalid JS body"]
 
 
 @pytest.mark.parametrize(
@@ -1311,6 +1565,7 @@ def test_develop_native_workflow_blocks_failed_external_handoff(
         develop_args(
             designEvidence=pass_design_evidence(),
             reviewEvidence=pass_review_evidence(),
+            authoringSpec=authoring_spec_payload(),
             **extra_args,
         ),
     )
@@ -1353,6 +1608,7 @@ def test_develop_native_workflow_returns_external_handoff(
         develop_args(
             designEvidence=pass_design_evidence(),
             reviewEvidence=pass_review_evidence(),
+            authoringSpec=authoring_spec_payload(),
             **extra_args,
         ),
     )
@@ -1367,6 +1623,7 @@ def test_develop_native_workflow_delivers_candidate_without_apply() -> None:
         develop_args(
             designEvidence=pass_design_evidence(),
             reviewEvidence=pass_review_evidence(),
+            authoringSpec=authoring_spec_payload(),
             generationEvidence=pass_generation_evidence(),
             validationEvidence=pass_validation_evidence(),
             smokeEvidence=pass_smoke_evidence(),
@@ -1383,6 +1640,7 @@ def test_develop_native_workflow_delivers_managed_apply() -> None:
         develop_args(
             designEvidence=pass_design_evidence(),
             reviewEvidence=pass_review_evidence(),
+            authoringSpec=authoring_spec_payload(),
             generationEvidence=pass_generation_evidence(),
             validationEvidence=pass_validation_evidence(),
             smokeEvidence=pass_smoke_evidence(),

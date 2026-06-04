@@ -12,18 +12,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 
 META_PREFIX = re.compile(r"\Aexport\s+const\s+meta\s*=\s*\{")
+META_EXPORT_PATTERN = re.compile(r"\bexport\s+const\s+meta\s*=")
 NAME_PATTERN = re.compile(r"(?:\bname\b|['\"]name['\"])\s*:\s*(['\"])(?P<value>[^'\"]+)\1")
 DESCRIPTION_PATTERN = re.compile(r"(?:\bdescription\b|['\"]description['\"])\s*:\s*(['\"])(?P<value>[^'\"]+)\1")
 TITLE_PATTERN = re.compile(r"(?:\btitle\b|['\"]title['\"])\s*:\s*(['\"])(?P<value>[^'\"]+)\1")
 PHASE_CALL_PATTERN = re.compile(r"\bphase\s*\(\s*(['\"])(?P<value>[^'\"]+)\1\s*\)")
 RETURN_STATUS_PATTERN = re.compile(r"\breturn\s*\{[\s\S]{0,1000}?\bstatus\s*:", re.MULTILINE)
-STRING_LITERAL_PATTERN = re.compile(r"""(['"])(?:\\.|(?!\1).)*\1""", re.DOTALL)
 AGENT_ASSIGNMENT_PATTERN = re.compile(
     r"\b(?:const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*await\s+(?:agent|workflowprogramAgent)\s*\(",
     re.MULTILINE,
@@ -50,9 +51,102 @@ def error(rule: str, message: str) -> dict[str, str]:
 
 
 def strip_string_literals(text: str) -> str:
-    """Remove quoted string contents before checking executable syntax."""
+    """Remove string literal text while preserving template expressions."""
 
-    return STRING_LITERAL_PATTERN.sub("", text)
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char in {"'", '"'}:
+            index = skip_quoted_literal(text, index, char)
+            continue
+        if char == "`":
+            index = strip_template_literal(text, index, out)
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def skip_quoted_literal(text: str, index: int, quote: str) -> int:
+    """Return the index after a single or double quoted literal."""
+
+    index += 1
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == quote:
+            return index + 1
+        index += 1
+    return index
+
+
+def find_template_expression_end(text: str, index: int) -> int:
+    """Return the closing brace index for a template `${...}` expression."""
+
+    depth = 1
+    quote: str | None = None
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return len(text)
+
+
+def strip_template_literal(text: str, index: int, out: list[str]) -> int:
+    """Skip template text but keep stripped `${...}` expression code."""
+
+    index += 1
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if char == "`":
+            return index + 1
+        if char == "$" and index + 1 < len(text) and text[index + 1] == "{":
+            end = find_template_expression_end(text, index + 2)
+            expression = text[index + 2:end]
+            out.append(strip_string_literals(expression))
+            index = end + 1 if end < len(text) else end
+            continue
+        index += 1
+    return index
+
+
+def strip_comments(text: str) -> str:
+    """Remove simple JavaScript comments for shape checks."""
+
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"//.*", "", text)
+    return text
 
 
 def is_pure_meta_literal(literal: str) -> bool:
@@ -138,6 +232,47 @@ def validate_forbidden_apis(text: str, errors: list[dict[str, str]]) -> None:
             errors.append(error("FORBIDDEN_API", f"Native Workflow JS must not use `{name}`."))
 
 
+def validate_meta_export_count(text: str, errors: list[dict[str, str]]) -> None:
+    """Require exactly one top-level meta export generated at the file start."""
+
+    count = len(META_EXPORT_PATTERN.findall(strip_string_literals(text)))
+    if count > 1:
+        errors.append(error("DUPLICATE_META_EXPORT", "Native Workflow JS must contain exactly one `export const meta` declaration."))
+
+
+def workflow_parse_source(text: str) -> str:
+    """Wrap a Native Workflow JS body in the same async shape used by test harnesses."""
+
+    source = META_EXPORT_PATTERN.sub("const meta =", text, count=1)
+    return (
+        "async function __workflowprogram_parse_probe(args, phase, agent, parallel, pipeline, workflow, log) {\n"
+        f"{source}\n"
+        "}\n"
+        "export { __workflowprogram_parse_probe }\n"
+    )
+
+
+def validate_module_parse(text: str, errors: list[dict[str, str]]) -> None:
+    """Ask Node to parse the workflow as an async module wrapper without executing it."""
+
+    try:
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--check"],
+            input=workflow_parse_source(text),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        errors.append(error("MODULE_PARSE_UNAVAILABLE", "`node` is required to parse Native Workflow JS modules."))
+        return
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or "module parse failed").strip().splitlines()
+        errors.append(error("MODULE_PARSE_FAILED", " ".join(message[:3])))
+
+
 def validate_gate_schemas(text: str, errors: list[dict[str, str]]) -> None:
     """Require schema when an Agent result is consumed by an if gate."""
 
@@ -157,6 +292,52 @@ def validate_gate_schemas(text: str, errors: list[dict[str, str]]) -> None:
                     f"Agent result `{name}` is consumed by a JS gate but the Agent call has no schema.",
                 )
             )
+
+
+def first_top_level_argument(call: str) -> str:
+    """Return the first argument from a balanced call string like ``(...)``."""
+
+    inner = call[1:-1]
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(inner):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            continue
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            return inner[:index]
+    return inner
+
+
+def validate_pipeline_shapes(text: str, errors: list[dict[str, str]]) -> None:
+    """Reject the common no-items pipeline shape seen in failed migrations."""
+
+    for match in re.finditer(r"\bpipeline\s*\(", text):
+        open_index = text.find("(", match.start())
+        try:
+            pipeline_call, _ = extract_balanced(text, open_index, "(", ")")
+        except ValueError:
+            errors.append(error("PIPELINE_CALL_INVALID", "A `pipeline()` call is not balanced."))
+            continue
+        first_arg = strip_comments(first_top_level_argument(pipeline_call)).strip()
+        if not first_arg:
+            errors.append(error("PIPELINE_SHAPE_INVALID", "`pipeline()` must start with an items argument."))
+            continue
+        if "=>" in first_arg or first_arg.startswith(("async ", "async(", "function", "(", "agent(", "workflowprogramAgent(", "parallel(")):
+            errors.append(error("PIPELINE_SHAPE_INVALID", "`pipeline()` must start with items, not a stage function or Agent call."))
 
 
 def validate_parallel_writes(text: str, errors: list[dict[str, str]]) -> None:
@@ -202,6 +383,8 @@ def validate_script(path: Path) -> dict[str, Any]:
 
     text = resolved.read_text(encoding="utf-8")
     meta_literal, meta = extract_meta(text, errors)
+    validate_meta_export_count(text, errors)
+    validate_module_parse(text, errors)
     declared_phases = phase_titles(TITLE_PATTERN, meta_literal or "")
     actual_phases = phase_titles(PHASE_CALL_PATTERN, text)
     if meta_literal is not None and declared_phases != actual_phases:
@@ -214,6 +397,7 @@ def validate_script(path: Path) -> dict[str, Any]:
 
     validate_forbidden_apis(text, errors)
     validate_gate_schemas(text, errors)
+    validate_pipeline_shapes(text, errors)
     validate_parallel_writes(text, errors)
     if not RETURN_STATUS_PATTERN.search(text):
         errors.append(error("RETURN_ENVELOPE_REQUIRED", "Workflow must return a stable object containing `status`."))

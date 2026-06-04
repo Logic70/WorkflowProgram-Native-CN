@@ -7,6 +7,7 @@ export const meta = {
     { title: 'Confirm', detail: 'Require explicit user confirmation before design.' },
     { title: 'Design', detail: 'Explore the target and produce an implementation-ready design.' },
     { title: 'Review', detail: 'Block generation until an independent design review passes.' },
+    { title: 'Author', detail: 'Convert reviewed design into a locked run-scoped authoring spec.' },
     { title: 'Generate', detail: 'Request or consume controlled candidate-generation evidence.' },
     { title: 'Validate', detail: 'Request or consume deterministic validation evidence.' },
     { title: 'Smoke', detail: 'Request or consume interactive smoke evidence.' },
@@ -52,6 +53,13 @@ const hasReviewEvidence = evidence =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
   asArray(evidence?.blockingIssues).length === 0
+const hasAuthoringSpec = spec =>
+  spec &&
+  nonEmpty(spec?.name) &&
+  nonEmpty(spec?.description) &&
+  nonEmpty(spec?.body) &&
+  asArray(spec?.phases).length > 0 &&
+  asArray(spec?.phases).every(item => nonEmpty(item?.title))
 const matchesCandidate = (evidence, candidateHash) =>
   hasEvidence(evidence) && nonEmpty(candidateHash) && evidence?.candidateHash === candidateHash
 
@@ -244,6 +252,72 @@ if (!hasReviewEvidence(reviewEvidence)) {
   })
 }
 
+phase('Author')
+
+let authoringSpec = args?.authoringSpec
+let authoringEvidence = args?.authoringEvidence
+if (!authoringSpec && !authoringEvidence) {
+  authoringEvidence = await agent(
+    `Create the exact JSON authoring spec for the target Native Workflow JS.
+
+Requirement:
+${JSON.stringify(requirementSummary)}
+
+Design:
+${JSON.stringify(designEvidence)}
+
+Review:
+${JSON.stringify(reviewEvidence)}
+
+Return a strict authoringSpec object for generate-native-workflow.py. The authoringSpec.body is ONLY the executable body that follows the generated meta header. Do not include export const meta, import statements, require(), module.exports, or any complete JavaScript file header in body. Use valid JavaScript syntax for Claude Code Native Workflow: phase(title), await agent(prompt, options), await parallel(thunks), await pipeline(items, stages...), ordinary JS gates, and a stable return envelope with status. Prefer ordinary await/phase sequencing over pipeline when there is no items collection. Separate L1 schema, L2 JS gates, and L3 external facts; external scripts must be represented as explicit Agent/tool responsibilities or supporting assets, not as comments that pretend execution happened. Return structured JSON only and do not write files.`,
+    withTaskModel('complex-generation', {
+      label: 'workflowprogram-develop:author',
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['PASS', 'BLOCKED'] },
+          authoringSpec: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              phases: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    detail: { type: 'string' },
+                  },
+                  required: ['title'],
+                  additionalProperties: false,
+                },
+              },
+              body: { type: 'string' },
+              supporting_assets: { type: 'array', items: { type: 'object' } },
+              task_model_policy: { type: 'object' },
+            },
+            required: ['name', 'description', 'phases', 'body', 'supporting_assets'],
+            additionalProperties: false,
+          },
+          blockingIssues: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['status', 'authoringSpec', 'blockingIssues'],
+        additionalProperties: false,
+      },
+    }),
+  )
+  authoringSpec = authoringEvidence?.authoringSpec
+}
+
+if (!hasAuthoringSpec(authoringSpec) || authoringEvidence?.status === 'BLOCKED') {
+  return respond('BLOCKED_GENERATION', {
+    blockingIssues: blockingIssues(authoringEvidence, 'Authoring spec did not pass.'),
+    authoringEvidence,
+    nextAction: 'FIX_DESIGN_AND_REINVOKE',
+  })
+}
+
 phase('Generate')
 
 const generationEvidence = args?.generationEvidence
@@ -254,11 +328,13 @@ if (!generationEvidence) {
     requirementSummary,
     designEvidence,
     reviewEvidence,
+    authoringEvidence,
+    authoringSpec,
     generationRequest: {
       targetRoot,
       runRoot,
       operation,
-      rule: 'Write candidate assets under RUN_ROOT only. Do not write TARGET_ROOT.',
+      rule: 'Write READY_FOR_GENERATION.authoringSpec unchanged to RUN_ROOT/native-workflow-authoring.json, then run generate-native-workflow.py under RUN_ROOT only. Do not synthesize or edit JS body in the foreground.',
     },
     nextAction: 'RUN_CONTROLLED_GENERATION',
   })

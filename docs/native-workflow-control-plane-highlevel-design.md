@@ -131,7 +131,7 @@ flowchart LR
 
 | Workflow JS | 职责 | 关键阶段 |
 |---|---|---|
-| `workflowprogram-develop.js` | 设计或修改目标 workflow | Clarify -> Confirm -> Design -> Review -> Generate -> Validate -> Smoke -> Apply -> Deliver |
+| `workflowprogram-develop.js` | 设计或修改目标 workflow | Clarify -> Confirm -> Design -> Review -> Author -> Generate -> Validate -> Smoke -> Apply -> Deliver |
 | `workflowprogram-audit.js` | 审计现有 workflow | Discover -> Inspect -> Audit -> Verify -> Report |
 | `workflowprogram-iterate.js` | 从 findings、lessons 和现状生成改进提案，并在批准后提升长期约束 | Readback -> Collect Findings -> Build Lessons Delta -> Validate Delta -> Append Lessons -> Propose Constraints -> Review -> Apply Approved Constraints -> Deliver |
 | `workflowprogram-validate.js` | 验证目标 workflow | Discover -> Static Validate -> External Verify -> Report |
@@ -147,8 +147,9 @@ flowchart LR
 | Re-entrant Clarifier | 在 JS 内判断信息是否足够 | args、已有答案、目标上下文 | `NEEDS_USER_INPUT` 或 confirmed requirement | 信息不足时提前返回 | schema、澄清 fixture |
 | Designer | 生成 High-Level、Low-Level 和控制面设计 | confirmed requirement、目标上下文 | 设计文档、追踪关系 | 关键边界未定义时阻断 | 设计审视 |
 | Reviewer | 检查设计闭合与风险 | 设计文档、需求 | verdict、issues | blocker 未关闭时阻断 | schema、JS gate |
-| Generator | 根据已审视设计生成候选 JS | 设计文档、目标目录 | `.claude/workflows/*.js`、按需 assets | 不生成默认第二语义真源 | 静态校验 |
-| Static Validator | 检查 Native JS 结构规则 | candidate JS | PASS 或问题清单 | 任一硬错误阻断 smoke | fixture suite |
+| Authoring Spec Agent | 将已审视设计收敛为 run-scoped authoring spec | confirmed requirement、designEvidence、reviewEvidence | `authoringSpec` JSON | spec 缺少 body、重复 meta 或 L3 事实策略不清时阻断 | schema、负例 fixture |
+| Generator | 根据 handoff 中的 `authoringSpec` 生成候选 JS | locked handoff、目标目录 | `.claude/workflows/*.js`、按需 assets | spec 与 handoff 不一致时拒绝写候选 | 静态校验 |
+| Static Validator | 检查 Native JS 结构规则和 ESM 可加载性 | candidate JS | PASS 或问题清单 | 任一硬错误阻断 smoke | fixture suite、module parse |
 | Smoke Harness | 验证真实交互式执行链 | candidate、目标环境 | smoke evidence | 失败时阻断交付 | M11 v1: packet + evaluate；Computer Use 终端驱动 deferred |
 | Controlled Apply | 防止漂移和重复副作用 | candidate hash、run ID、manifest、目标文件 | applied manifest 或 conflict | drift 时 `BLOCKED_CONFLICT` | 冲突 fixture |
 
@@ -174,6 +175,17 @@ M13 已完成按任务类型选择模型的核心实现。
 - 未配置或模型不可用时回退到默认继承模型，并记录 `MODEL_ALIAS_UNAVAILABLE` 或 `TASK_TYPE_UNMAPPED` evidence。
 - 供应商和版本不散落硬编码在 workflow JS 中。
 
+### 5.6 Authoring 与校验责任收口
+
+FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个目标工作流打补丁：
+
+- 目标 JS authoring spec 不再由前台模型自由综合。`workflowprogram-develop.js` 在 Review 之后进入 Author 阶段，由专用 `workflowprogram-develop:author` Agent 返回严格 `authoringSpec`。
+- 前台 leaf Skill 只把 `READY_FOR_GENERATION.authoringSpec` 原样写入 `RUN_ROOT/native-workflow-authoring.json`，不得根据 LLD 或聊天上下文重写 JS body。
+- Generator 的 `--generation-handoff` 主路径必须验证 handoff 携带 `authoringSpec`，并验证磁盘 spec 与 handoff spec 等价；不一致时在创建 candidate 前失败。
+- `body` 是 meta 后的执行体，不是完整 JS 文件。`body` 内出现 `export const meta`、`import`、`require()`、`module.exports` 或重复完整文件头时属于 authoring spec 错误。
+- Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查。
+- `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
+
 ## 6. 运行时视图
 
 ### 6.1 Develop 可重入流程
@@ -191,10 +203,11 @@ flowchart TD
     H --> I["D3 Design"]
     I --> J["D4 Review"]
     J -->|BLOCKED| I
-    J -->|PASS| K["D5 Generate"]
-    K --> L["D6 Validate"]
-    L --> M["D7 Interactive Smoke"]
-    M --> N["D8 Apply / Deliver"]
+    J -->|PASS| K["D5 Author"]
+    K --> L["D6 Generate"]
+    L --> M["D7 Validate"]
+    M --> N["D8 Interactive Smoke"]
+    N --> O["D9 Apply / Deliver"]
 ```
 
 前台模型只负责转述和重新调用，不拥有 gate 逻辑。控制决策由 JS 的状态返回和 gate 决定。
@@ -262,8 +275,9 @@ sequenceDiagram
 | `.workflowprogram/runs/` | `supporting`、可选 | 运行证据、smoke 结果、apply manifest |
 | `.workflowprogram/design/` | `supporting`、可选 | 设计追溯材料 |
 | `workflow-spec.yaml` 或其他 IR | `supporting`、可选 | 仅在复杂审计场景按需保留，不是默认 runtime 真源 |
-| 当前 `workflowprogram-native-authoring.js`、readiness validator 与 JSON spec compatibility path | `transitional` | 兼容资产保留在脚本、测试和历史文档中；active develop leaf 不再引用它们作为主路径 |
-| `generate-native-workflow.py` renderer | `supporting` | M15 后作为 deterministic renderer 消费 `READY_FOR_GENERATION` handoff；`--readiness` 仅为兼容回退 |
+| 当前 `workflowprogram-native-authoring.js`、readiness validator 与 JSON spec compatibility path | `transitional` | 兼容资产保留在脚本、测试和历史文档中；active develop leaf 使用内置 Author 阶段，不再引用它们作为主路径 |
+| `READY_FOR_GENERATION.authoringSpec` | `supporting`、run-scoped | 产品 JS Author 阶段的受控生成输入；只用于 deterministic renderer，不是目标 workflow 的长期第二真源 |
+| `generate-native-workflow.py` renderer | `supporting` | 作为 deterministic renderer 消费携带 `authoringSpec` 的 `READY_FOR_GENERATION` handoff；`--readiness` 仅为兼容回退 |
 | 旧 `.workflowprogram/runtime/` | `historical` / `deprecated` | legacy 兼容，完成验证后移除 |
 
 真相源规则：

@@ -137,10 +137,11 @@ project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ nam
 | D2 Confirm | 获得用户确认 | requirement packet | 检查 `confirmedByUser` | confirmed packet | `confirmedByUser=true` | `READY_FOR_CONFIRMATION` | 可选 run evidence | confirmation result |
 | D3 Design | 生成 High-Level 和 Low-Level 设计 | confirmed packet、目标上下文 | 并行探索；串行整合 HLD、LLD、trace | design docs | 边界、输入输出、gate、测试完整 | `BLOCKED_DESIGN` | candidate design docs | design summary |
 | D4 Review | 审视设计闭合 | design docs、requirements | 独立 Agent review；JS 过滤 blocker | review verdict、issues | 无 blocker | `BLOCKED_DESIGN_REVIEW` | review report | closure report |
-| D5 Generate | 生成 Native JS 和按需 assets | approved design | 串行 Generator Agent 依据设计文档写入 candidate；按需调用 deterministic renderer；按需提取 Skill、Agent、脚本 | candidate tree | 资产范围合规 | `BLOCKED_GENERATION` | candidate tree | generation report |
-| D6 Validate | 执行 L1 / L2 / L3 校验 | candidate tree | 静态校验；按需调用领域脚本 | validation report | 硬错误为零 | `BLOCKED_VALIDATION` | validation report | rule results |
-| D7 Smoke | 验证真实交互式运行 | validation PASS | discovery、launch、Agent、schema、gate、blocker smoke | smoke evidence | 最低 smoke PASS | `BLOCKED_SMOKE` | smoke evidence | transcript、JSONL |
-| D8 Apply / Deliver | 受控写入并交付 | smoke PASS、apply approved | checksum、drift、idempotency、managed apply、manifest | applied manifest、summary | 无 drift，manifest 一致 | `BLOCKED_CONFLICT` | target assets、manifest | apply report |
+| D5 Author | 生成 run-scoped authoring spec | approved design、review verdict | 专用 Authoring Spec Agent 将设计收敛为严格 JSON，不写文件 | `authoringSpec` | schema 合法、body 不含完整文件头、L3 事实边界清楚 | `BLOCKED_GENERATION` | authoring spec | authoring evidence |
+| D6 Generate | 生成 Native JS 和按需 assets | `READY_FOR_GENERATION.authoringSpec` | 前台只落盘 handoff spec；deterministic renderer 验证 handoff/spec 等价后写 candidate | candidate tree | 资产范围合规，handoff/spec 匹配 | `BLOCKED_GENERATION` | candidate tree | generation report |
+| D7 Validate | 执行 L1 / L2 / L3 校验 | candidate tree | 静态校验、ESM module parse、按需领域脚本 | validation report | 硬错误为零，module parse PASS | `BLOCKED_VALIDATION` | validation report | rule results |
+| D8 Smoke | 验证真实交互式运行 | validation PASS | discovery、launch、Agent、schema、gate、blocker smoke | smoke evidence | 最低 smoke PASS | `BLOCKED_SMOKE` | smoke evidence | transcript、JSONL |
+| D9 Apply / Deliver | 受控写入并交付 | smoke PASS、apply approved | checksum、drift、idempotency、managed apply、manifest | applied manifest、summary | 无 drift，manifest 一致 | `BLOCKED_CONFLICT` | target assets、manifest | apply report |
 
 ### 5.2 其他产品 workflow
 
@@ -204,6 +205,10 @@ export const meta = {
 - 被 gate 消费的 Agent 字段必须在 schema 中声明。
 - 并行 Agent 默认不写相同目录。
 - 文件末尾返回稳定 envelope。
+- 文件必须通过 ESM module parse；正则静态规则不得替代 Native runtime 可加载性检查。
+- 全文件只能出现一个 `export const meta`，且必须在文件开头。authoring spec 的 `body` 只允许包含 meta 后的执行体，禁止包含 `export const meta`、`import`、`module.exports`、`require()` 或完整文件头。
+- `pipeline()` 必须以 items 参数开始并接收 stage 函数；若只是串行阶段编排，应使用普通 `await` 和 `phase()`，不得把无 items 的函数序列伪装为 pipeline。
+- `parallel()` 必须接收 thunk 集合；不得把已经启动的 Agent promise 或共享写入步骤直接放入同一并行组。
 - 不使用 `fs`、`require()`、`process`、`Date.now()`、`Math.random()` 或无参 `new Date()`。
 - 插件产品 JS 之间需要嵌套调用时，使用启动层传入或解析后的绝对脚本引用；不得假设 leaf 名称已进入 saved workflow registry。该路径必须增加嵌套 smoke。
 - 当目标 workflow 包含可配置模型选择时，JS 必须在 `meta` 后声明 `const taskModels = args?.taskModels || {}` 和 `withTaskModel(taskType, options)` 助手。helper 只在 `args.taskModels[taskType]` 是非空且不等于 `inherit` 时添加 `model`；缺失、空字符串和 `inherit` 均必须省略 `model` 属性。
@@ -225,6 +230,25 @@ export const meta = {
 M13 已启用 model policy，工作流 JS 通过 `withTaskModel(taskType, options)` 消费映射结果。JS 无需感知具体模型别名，供应商与版本不散落硬编码在 workflow JS 中。
 
 工作流专属 Agent 默认内联。仅在跨 workflow 复用、独立权限、独立调用或长 prompt 独立版本管理时提取 `.claude/agents/*.md`。
+
+### 7.1.1 Authoring Spec Agent
+
+`workflowprogram-develop.js` 必须包含专用 Author 阶段，Agent label 为 `workflowprogram-develop:author`，task type 为 `complex-generation`。该 Agent 只负责把已通过 review 的 HLD/LLD 收敛为 `authoringSpec`，不执行文件写入。
+
+Authoring Spec Agent 的输出 schema：
+
+| 字段 | 约束 |
+|---|---|
+| `status` | `PASS | BLOCKED` |
+| `authoringSpec.name` | `[a-z0-9][a-z0-9-]*` |
+| `authoringSpec.description` | 非空字符串 |
+| `authoringSpec.phases[]` | 非空 `{title, detail?}`，title 与最终 `phase()` 对齐 |
+| `authoringSpec.body` | meta 后执行体；不得包含 `export const meta` 或完整 JS module header |
+| `authoringSpec.supporting_assets` | 默认空；每项必须有 kind/path/content/reason |
+| `authoringSpec.task_model_policy.agent_task_models` | 可选 label -> logical task type |
+| `blockingIssues` | `status=BLOCKED` 时说明阻断原因 |
+
+前台 Skill 在 Step 4 只能把该对象原样序列化到 `RUN_ROOT/native-workflow-authoring.json`。如果 `READY_FOR_GENERATION` 不含 `authoringSpec`，或磁盘 spec 与 handoff spec 不一致，generator 必须返回 `BLOCKED_GENERATION`。
 
 ### 7.2 Skill 定义
 
@@ -291,14 +315,15 @@ Native JS 只请求 smoke 或消费 smoke evidence，不在后台脚本内直接
 
 `operation` 枚举：`create | update | migrate`。
 
-Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D8 使用可重入 handoff：
+Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D9 使用可重入 handoff：
 
 | 阶段 | 缺少证据时返回 | 前台或宿主侧动作 | 重新调用时补充 |
 |---|---|---|---|
-| D5 Generate | `READY_FOR_GENERATION` | 依据已审视设计运行受控 generator，将 candidate 写入 `RUN_ROOT` | `generationEvidence` |
-| D6 Validate | `READY_FOR_VALIDATION` | 对 candidate 运行静态校验和按需领域脚本 | `validationEvidence` |
-| D7 Smoke | `READY_FOR_SMOKE` | 通过宿主侧 Computer Use 或人工入口运行交互式 smoke | `smokeEvidence` |
-| D8 Apply | `READY_FOR_APPLY`，仅当 `applyApproved=true` | 执行 checksum、drift、idempotency 和 managed apply | `applyEvidence` |
+| D5 Author | 内部 Agent 阶段，失败返回 `BLOCKED_GENERATION` | 专用 Authoring Spec Agent 产出 `READY_FOR_GENERATION.authoringSpec`，前台不得自由改写 | `authoringSpec` 或 `authoringEvidence` |
+| D6 Generate | `READY_FOR_GENERATION` | 将 handoff 中的 `authoringSpec` 原样落盘，受控 generator 校验 handoff/spec 等价后将 candidate 写入 `RUN_ROOT` | `generationEvidence` |
+| D7 Validate | `READY_FOR_VALIDATION` | 对 candidate 运行静态校验和按需领域脚本 | `validationEvidence` |
+| D8 Smoke | `READY_FOR_SMOKE` | 通过宿主侧 Computer Use 或人工入口运行交互式 smoke | `smokeEvidence` |
+| D9 Apply | `READY_FOR_APPLY`，仅当 `applyApproved=true` | 执行 checksum、drift、idempotency 和 managed apply | `applyEvidence` |
 
 证据对象至少包含 `status`。generation PASS 必须包含非空 `candidateRefs`、非空 `candidateHash` 和非空 `evidence` 数组。validation、smoke 和 apply PASS 必须回传相同 `candidateHash`，防止旧证据误用于新候选；apply PASS 还必须包含 `applyManifest`。外部步骤失败时，前台携带 `status != PASS` 和 `blockingIssues` 重新调用，JS 返回对应 `BLOCKED_*`。`applyApproved=false` 时 D8 不执行写入，直接以 `deliveryMode=candidate-only` 交付候选。
 
@@ -620,10 +645,13 @@ sequenceDiagram
 | `READY_FOR_CONFIRMATION` | D2 | 需求摘要 | 用户确认后重新调用 | requirement packet |
 | `BLOCKED_DESIGN` | D3 | 设计边界不完整 | 补充设计后重跑 | design summary |
 | `BLOCKED_DESIGN_REVIEW` | D4 | blocker 列表 | 修改设计后重跑 | closure report |
-| `BLOCKED_GENERATION` | D5 | 生成或资产范围错误 | 修复生成逻辑后重跑 | generation report |
-| `BLOCKED_VALIDATION` | D6 | 规则 ID 和证据 | 修复 JS 或脚本 | validation report |
-| `BLOCKED_SMOKE` | D7 | smoke 步骤和 transcript | 修复环境或 JS | smoke evidence |
-| `BLOCKED_CONFLICT` | D8 / publish | drift、checksum、manifest 差异 | 人工合并或重新生成 | conflict report |
+| `AUTHORING_SPEC_INVALID` | D5 / generator | spec 缺字段、body 含完整文件头或不匹配 handoff | 修复 Author 阶段输出并重新调用 | authoring spec validation report |
+| `BLOCKED_GENERATION` | D5 / D6 | 生成或资产范围错误 | 修复 authoring spec 或生成逻辑后重跑 | generation report |
+| `MODULE_PARSE_FAILED` | D7 | JS 无法作为 ESM module 加载 | 修复 body 或 helper 后重新生成 | static validation report |
+| `DUPLICATE_META_EXPORT` | D7 | 多个 `export const meta` | 保留 generator 生成的唯一 meta，body 只写执行体 | static validation report |
+| `BLOCKED_VALIDATION` | D7 | 规则 ID 和证据 | 修复 JS 或脚本 | validation report |
+| `BLOCKED_SMOKE` | D8 | smoke 步骤和 transcript | 修复环境或 JS | smoke evidence |
+| `BLOCKED_CONFLICT` | D9 / publish | drift、checksum、manifest 差异 | 人工合并或重新生成 | conflict report |
 | `BLOCKED_PUBLISH` | publish | 资格 gate 缺失 | 补充验证后重跑 | qualification report |
 | `BLOCKED_AUDIT` | audit | 审计输入、证据或结论不完整 | 补充输入或修复审计规则 | audit report |
 | `BLOCKED_ITERATION` | iterate | 提案缺少原因、证据或审视结论 | 补充提案后重跑 | proposal report |

@@ -286,6 +286,24 @@ DEVELOP_LENSES = {
 }
 
 
+def authoring_spec_payload() -> dict:
+    return {
+        "name": "generated-probe",
+        "description": "Generate a minimal native workflow probe.",
+        "phases": [{"title": "Probe", "detail": "Return PASS."}],
+        "body": "phase('Probe')\n\nreturn { status: 'PASS' }\n",
+        "supporting_assets": [],
+    }
+
+
+def pass_authoring_evidence() -> dict:
+    return {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(),
+        "blockingIssues": [],
+    }
+
+
 def test_develop_task_models_passed_to_agents() -> None:
     """When taskModels are provided in args, the correct model aliases reach each agent."""
     base_args = {
@@ -302,15 +320,17 @@ def test_develop_task_models_passed_to_agents() -> None:
             "repository-exploration": "deepseek-v4-flash[1M]",
             "architecture": "deepseek-v4-pro[1M]",
             "risk-review": "deepseek-v4-pro[1M]",
+            "complex-generation": "deepseek-v4-pro[1M]",
         },
     }
 
-    # Provide mock agent results for exploration (2), design (1), review (1)
+    # Provide mock agent results for exploration (2), design (1), review (1), author (1)
     agent_results = [
         {"status": "PASS", "findings": ["f1"], "constraints": ["c1"], "blockingIssues": []},
         {"status": "PASS", "findings": ["f2"], "constraints": ["c2"], "blockingIssues": []},
         {"status": "PASS", "summary": "s", "highLevelDesign": "hld", "lowLevelDesign": "lld", "traceability": ["t"], "blockingIssues": []},
         {"status": "PASS", "blockingIssues": [], "requiredRevisions": [], "summary": "approved"},
+        pass_authoring_evidence(),
     ]
 
     harness_result = execute_workflow_js(DEVELOP_JS, base_args, agent_results=agent_results)
@@ -322,16 +342,18 @@ def test_develop_task_models_passed_to_agents() -> None:
     # Should reach PASS (no generation/validation/smoke/apply evidence, so stops at Deliver)
     assert result["status"] == "READY_FOR_GENERATION"
 
-    assert len(labels) >= 4
+    assert len(labels) >= 5
     assert labels[0].startswith("workflowprogram-develop:explore:")
     assert labels[1].startswith("workflowprogram-develop:explore:")
     assert labels[2] == "workflowprogram-develop:design"
     assert labels[3] == "workflowprogram-develop:review"
+    assert labels[4] == "workflowprogram-develop:author"
 
     assert models[0] == "deepseek-v4-flash[1M]"  # exploration
     assert models[1] == "deepseek-v4-flash[1M]"  # exploration
     assert models[2] == "deepseek-v4-pro[1M]"    # design
     assert models[3] == "deepseek-v4-pro[1M]"    # review
+    assert models[4] == "deepseek-v4-pro[1M]"    # author
 
 
 def test_develop_default_model_when_task_models_absent() -> None:
@@ -353,6 +375,7 @@ def test_develop_default_model_when_task_models_absent() -> None:
         {"status": "PASS", "findings": ["f2"], "constraints": ["c2"], "blockingIssues": []},
         {"status": "PASS", "summary": "s", "highLevelDesign": "hld", "lowLevelDesign": "lld", "traceability": ["t"], "blockingIssues": []},
         {"status": "PASS", "blockingIssues": [], "requiredRevisions": [], "summary": "approved"},
+        pass_authoring_evidence(),
     ]
 
     harness_result = execute_workflow_js(DEVELOP_JS, base_args, agent_results=agent_results)
@@ -463,6 +486,7 @@ def test_task_models_partial_coverage_does_not_block() -> None:
         {"status": "PASS", "findings": ["f2"], "constraints": ["c2"], "blockingIssues": []},
         {"status": "PASS", "summary": "s", "highLevelDesign": "hld", "lowLevelDesign": "lld", "traceability": ["t"], "blockingIssues": []},
         {"status": "PASS", "blockingIssues": [], "requiredRevisions": [], "summary": "approved"},
+        pass_authoring_evidence(),
     ]
 
     harness_result = execute_workflow_js(DEVELOP_JS, base_args, agent_results=agent_results)
@@ -474,6 +498,7 @@ def test_task_models_partial_coverage_does_not_block() -> None:
     assert models[1] is None  # exploration: no mapping
     assert models[2] == "deepseek-v4-pro[1M]"  # design: has mapping
     assert models[3] is None  # review: no mapping
+    assert models[4] is None  # author: no mapping
 
 
 def test_resolver_output_matches_js_expected_shape(tmp_path: Path) -> None:
@@ -743,6 +768,7 @@ def test_develop_task_model_omit_when_inherit() -> None:
         {"status": "PASS", "findings": ["f2"], "constraints": ["c2"], "blockingIssues": []},
         {"status": "PASS", "summary": "s", "highLevelDesign": "hld", "lowLevelDesign": "lld", "traceability": ["t"], "blockingIssues": []},
         {"status": "PASS", "blockingIssues": [], "requiredRevisions": [], "summary": "approved"},
+        pass_authoring_evidence(),
     ]
 
     harness_result = execute_workflow_js(DEVELOP_JS, base_args, agent_results=agent_results)
@@ -756,7 +782,8 @@ def test_develop_task_model_omit_when_inherit() -> None:
     assert models[2] == "deepseek-v4-pro[1M]"
     # review: inherit → model should be null
     assert models[3] is None
-    assert model_properties == [False, False, True, False]
+    assert models[4] is None
+    assert model_properties == [False, False, True, False, False]
 
 
 def test_develop_task_model_omit_when_absent() -> None:
@@ -782,6 +809,7 @@ def test_develop_task_model_omit_when_absent() -> None:
         {"status": "PASS", "findings": ["f2"], "constraints": ["c2"], "blockingIssues": []},
         {"status": "PASS", "summary": "s", "highLevelDesign": "hld", "lowLevelDesign": "lld", "traceability": ["t"], "blockingIssues": []},
         {"status": "PASS", "blockingIssues": [], "requiredRevisions": [], "summary": "approved"},
+        pass_authoring_evidence(),
     ]
 
     harness_result = execute_workflow_js(DEVELOP_JS, base_args, agent_results=agent_results)
@@ -792,7 +820,8 @@ def test_develop_task_model_omit_when_absent() -> None:
     assert models[1] is None  # exploration absent
     assert models[2] == "deepseek-v4-pro[1M]"  # design present
     assert models[3] is None  # review absent
-    assert model_properties == [False, False, True, False]
+    assert models[4] is None  # author absent
+    assert model_properties == [False, False, True, False, False]
 
 
 def test_iterate_full_path_task_types(tmp_path: Path) -> None:

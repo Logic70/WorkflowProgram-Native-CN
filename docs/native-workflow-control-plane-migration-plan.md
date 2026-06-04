@@ -163,11 +163,11 @@ M7 是验证方向的过渡切片，不是最终稳态。它仍把澄清、JSON 
 
 目标：
 
-- 将 Clarify、Confirm、Design、Review、Generate、Validate、Smoke、Apply、Deliver 写入 `workflowprogram-develop.js`。
+- 将 Clarify、Confirm、Design、Review、Author、Generate、Validate、Smoke、Apply、Deliver 写入 `workflowprogram-develop.js`。
 - Clarify 信息不足时返回 `NEEDS_USER_INPUT`；等待确认时返回 `READY_FOR_CONFIRMATION`。
 - 前台模型只负责转述问题、收集答案和重新调用，不拥有 gate 逻辑。
 - 设计文档经过审视后直接指导 JS 生成；JSON authoring spec 降级为过渡桥，不作为默认语义真源。
-- D5-D8 不直接读写文件系统或控制桌面；JS 返回 `READY_FOR_GENERATION / READY_FOR_VALIDATION / READY_FOR_SMOKE / READY_FOR_APPLY`，由前台执行窄化脚本并携带 candidate-bound evidence 重新调用。
+- D5-D9 不直接读写文件系统或控制桌面；D5 Author 在 JS 内产出 locked `authoringSpec`，D6-D9 返回 `READY_FOR_GENERATION / READY_FOR_VALIDATION / READY_FOR_SMOKE / READY_FOR_APPLY`，由前台执行窄化脚本并携带 candidate-bound evidence 重新调用。
 - 增加 `build-native-develop-evidence.py`，对 candidate tree 求稳定 hash，并规范化 generation、validation、smoke 和 apply evidence。
 
 准出条件：
@@ -313,6 +313,29 @@ M11 v1 已完成：
 - generator 单测覆盖显式映射、`inherit`、缺失映射、生成 JS 执行时的 `model` 透传。
 - Native static validation、仓库 `validate-workflow.py` 和 `claude plugin validate dist/plugin` 通过。
 
+### M18. 本次实施：Authoring 责任收口与模块级验证
+
+问题来源：
+
+- FreeSTRIDE 迁移显示 active develop leaf 在 `READY_FOR_GENERATION` 后仍由前台模型自由创建 `native-workflow-authoring.json`，没有专用 authoring agent 或 handoff/spec 绑定。
+- 旧 validator 只做轻量正则检查，未执行 ESM module parse，导致 body 包含第二个 `export const meta`、非 async 函数内 `await` 等不可加载 JS 被误判为 PASS。
+- 测试 fixture 覆盖了最小 happy path，但没有覆盖“复杂迁移时把完整 JS 文件塞进 body”的负例。
+
+范围：
+
+- 在 `workflowprogram-develop.js` 中新增 Author 阶段，使用 `workflowprogram-develop:author` Agent 产出 `authoringSpec`；该 Agent 使用 `complex-generation` task type。
+- `READY_FOR_GENERATION` handoff 必须携带 `authoringSpec`；前台 Skill 只将该对象原样落盘，不再根据 LLD 自由合成 JS。
+- `generate-native-workflow.py` 验证 handoff 包含 authoring spec，并验证磁盘 spec 与 handoff spec 等价；不一致时在创建 candidate 前失败。
+- `generate-native-workflow.py` 在 spec 层拒绝 body 中的 `export const meta`、`import`、`module.exports`、`require()` 等完整文件或模块边界。
+- `validate-native-workflow-js.py` 增加 ESM module parse、唯一 meta export、pipeline/parallel 基础形态检查；module parse 失败作为硬错误阻断 smoke。
+- 增加 FreeSTRIDE 暴露问题的精简负例测试：完整 JS body、重复 meta、非 async await、handoff 缺少 authoringSpec、handoff/spec mismatch。
+
+准出条件：
+
+- develop JS 单测覆盖 Author agent label、model 传递和 `READY_FOR_GENERATION.authoringSpec`。
+- generator/validator 单测覆盖上述负例并保持有效最小样例 PASS。
+- `validate-workflow.py`、`pytest` 目标集、plugin validation 和 dist build 均通过。
+
 ### M14. 已完成：Legacy 下线评估
 
 当前状态：
@@ -435,6 +458,8 @@ M11 v1 已完成：
 | 不同 Claude Code 入口能力不一致 | 每个支持入口单独执行 capability probe |
 | 语义触发失败导致用户误以为必须记忆 slash command | 保留 slash command 作为兜底，但文档默认展示自然语言入口 |
 | 后台 Workflow 在需求未收敛时提前执行 | Native develop JS 先返回 `NEEDS_USER_INPUT` / `READY_FOR_CONFIRMATION`，生成阶段再由 generator `--generation-handoff` 校验 `READY_FOR_GENERATION` handoff；`--readiness` 仅保留为 M7 兼容回退 |
+| 前台模型自由写 JS authoring spec | M18 后由 `workflowprogram-develop:author` 专用 Agent 产出 `authoringSpec`，前台只负责原样落盘，generator 校验 handoff/spec 等价 |
+| 正则静态 validator 漏掉 JS module 语法错误 | M18 后静态 validation 包含 ESM module parse、唯一 meta export 和基础 pipeline/parallel 形态负例 |
 | 把 M7 原型或 M8 分发骨架误认为最终控制面 | 文档明确 M7 是过渡切片；M8 只分发五个入口并验证路径启动；M9-M10C 才迁移 WorkflowProgram 自身业务控制流 |
 | 原生 resume 导致副作用重复执行 | 为 apply、publish 和外部调用增加 candidate hash、manifest 和 drift 检查 |
 | 模型选择策略散落在 Agent prompt 和 JS 中 | M13 已实现：使用逻辑 task type 和集中 model policy；默认继承模型 |
