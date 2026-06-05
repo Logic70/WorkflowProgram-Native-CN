@@ -45,6 +45,9 @@
 - ALWAYS 普通提交前运行 `quality-gate.py commit`；runtime/schema/publish/harness 改动运行 `quality-gate.py integration`；插件版本发布前运行 `quality-gate.py release`。
 - ALWAYS 保持发布门禁覆盖构建产物、版本一致性、完整仓库校验、插件 bootstrap 和 smoke matrix。
 - ALWAYS 在验证脚本中检查外部工具链可用性（信息级别，不阻塞）。
+- ALWAYS 将 Native develop 的 generation、validation、smoke 和 apply evidence 绑定到当前 candidate；不得把任意 PASS JSON、原始 JSONL 或路径字符串当作事实证明。
+- ALWAYS 将 evaluator 报告绑定到实际 `scriptPath`；候选 smoke 还必须绑定 `scriptHash`、`candidateHash` 和非空 scenario。
+- ALWAYS 将 controlled apply evidence 绑定到显式 `targetRoot`、持久化 managed result、目标 managed manifest 和目标文件当前 hash。
 - NEVER 在未说明原因和运行成本前引入重量级共享 hooks。
 
 ## 上下文管理

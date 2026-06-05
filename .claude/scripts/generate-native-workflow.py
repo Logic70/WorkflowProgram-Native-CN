@@ -36,6 +36,8 @@ SUPPORTING_ASSET_RULES = {
     "authoring-metadata": (".workflowprogram/design/", None),
     "workflow-spec-ir": (".workflowprogram/design/", "workflow-spec.yaml"),
 }
+ASSET_DISPOSITION_ACTIONS = {"retain", "generate", "update", "archive", "remove", "defer", "not-applicable"}
+ASSET_ACTIONS_REQUIRING_SUPPORTING_ASSET = {"generate", "update", "archive"}
 
 
 def load_validator_module():
@@ -276,6 +278,20 @@ def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str,
         if not isinstance(phases, list) or not phases:
             errors.append({"rule": "HANDOFF_AUTHORING_SPEC_PHASES", "message": "authoringSpec.phases must be a non-empty array."})
 
+    # --- migrate/update asset disposition -------------------------------------
+    gen_op = str(gen_req.get("operation", "")).strip() if isinstance(gen_req, dict) else ""
+    normalized_authoring_spec: dict[str, Any] | None = None
+    if isinstance(authoring_spec, dict):
+        try:
+            normalized_authoring_spec = normalize_authoring_spec_payload(authoring_spec)
+        except Exception as exc:
+            errors.append({"rule": "HANDOFF_AUTHORING_SPEC_INVALID", "message": str(exc)})
+    if gen_op in ("migrate", "update") and normalized_authoring_spec is not None and not normalized_authoring_spec["asset_disposition"]:
+        errors.append({
+            "rule": "HANDOFF_ASSET_DISPOSITION_REQUIRED",
+            "message": f"Operation '{gen_op}' requires a non-empty authoringSpec.asset_disposition table.",
+        })
+
     # --- designEvidence -------------------------------------------------------
     design_ev = packet.get("designEvidence")
     if not isinstance(design_ev, dict):
@@ -294,6 +310,26 @@ def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str,
             errors.append({"rule": "HANDOFF_DESIGN_EVIDENCE_TRACEABILITY", "message": "designEvidence.traceability must be a non-empty array."})
         elif not all(isinstance(t, str) and t.strip() for t in traceability):
             errors.append({"rule": "HANDOFF_DESIGN_EVIDENCE_TRACEABILITY_ITEMS", "message": "designEvidence.traceability items must be non-empty strings."})
+        if gen_op in ("migrate", "update"):
+            design_disposition = design_ev.get("assetDisposition")
+            if not isinstance(design_disposition, list) or not design_disposition:
+                errors.append({
+                    "rule": "HANDOFF_DESIGN_ASSET_DISPOSITION_REQUIRED",
+                    "message": f"Operation '{gen_op}' requires non-empty designEvidence.assetDisposition.",
+                })
+            elif normalized_authoring_spec is not None:
+                try:
+                    normalized_design_disposition = normalize_design_asset_disposition(
+                        design_disposition,
+                        normalized_authoring_spec["supporting_assets"],
+                    )
+                    if normalized_design_disposition != normalized_authoring_spec["asset_disposition"]:
+                        errors.append({
+                            "rule": "HANDOFF_ASSET_DISPOSITION_MISMATCH",
+                            "message": "authoringSpec.asset_disposition must match the reviewed designEvidence.assetDisposition.",
+                        })
+                except Exception as exc:
+                    errors.append({"rule": "HANDOFF_DESIGN_ASSET_DISPOSITION_INVALID", "message": str(exc)})
 
     # --- reviewEvidence -------------------------------------------------------
     review_ev = packet.get("reviewEvidence")
@@ -309,6 +345,11 @@ def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str,
             errors.append({"rule": "HANDOFF_REVIEW_EVIDENCE_BLOCKING_NOT_ARRAY", "message": "reviewEvidence.blockingIssues must be an array."})
         elif len(blocking) > 0:
             errors.append({"rule": "HANDOFF_REVIEW_EVIDENCE_BLOCKING_NOT_EMPTY", "message": f"reviewEvidence.blockingIssues must be empty (got {len(blocking)} issues)."})
+        if gen_op in ("migrate", "update") and review_ev.get("assetDispositionReviewed") is not True:
+            errors.append({
+                "rule": "HANDOFF_REVIEW_ASSET_DISPOSITION_REQUIRED",
+                "message": f"Operation '{gen_op}' requires reviewEvidence.assetDispositionReviewed=true.",
+            })
 
     status_out = "FAIL" if errors else "PASS"
     return {
@@ -370,6 +411,7 @@ def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
         raise ValueError("`body` must be a non-empty JavaScript string.")
     validate_authoring_body(body)
     supporting_assets = normalize_supporting_assets(payload.get("supporting_assets", []))
+    asset_disposition = normalize_asset_disposition(payload.get("asset_disposition", []), supporting_assets)
     task_model_policy = normalize_task_model_policy(payload.get("task_model_policy"))
     return {
         "name": name,
@@ -377,6 +419,7 @@ def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
         "phases": normalized_phases,
         "body": body.strip() + "\n",
         "supporting_assets": supporting_assets,
+        "asset_disposition": asset_disposition,
         "task_model_policy": task_model_policy,
     }
 
@@ -396,7 +439,7 @@ def validate_handoff_spec_alignment(spec: dict[str, Any], handoff_path: Path) ->
         handoff_spec = normalize_authoring_spec_payload(packet.get("authoringSpec"))
     except Exception as exc:
         return [{"rule": "HANDOFF_AUTHORING_SPEC_INVALID", "message": f"authoringSpec is invalid: {exc}"}]
-    comparable_keys = ("name", "description", "phases", "body", "supporting_assets", "task_model_policy")
+    comparable_keys = ("name", "description", "phases", "body", "supporting_assets", "asset_disposition", "task_model_policy")
     for key in comparable_keys:
         if spec.get(key) != handoff_spec.get(key):
             errors.append({"rule": "HANDOFF_AUTHORING_SPEC_MISMATCH", "message": f"Disk spec field `{key}` does not match READY_FOR_GENERATION.authoringSpec."})
@@ -448,6 +491,79 @@ def normalize_supporting_assets(value: Any) -> list[dict[str, str]]:
     return normalized
 
 
+def normalize_asset_disposition(value: Any, supporting_assets: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Validate migration intent separately from generated supporting-asset content."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("`asset_disposition` must be an array when provided.")
+    supporting_paths = {item["path"] for item in supporting_assets}
+    normalized: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"`asset_disposition[{index}]` must be an object.")
+        raw_path = str(item.get("path", "")).strip().replace("\\", "/")
+        action = str(item.get("action", "")).strip()
+        reason = str(item.get("reason", "")).strip()
+        raw_supporting_path = str(item.get("supporting_asset_path", "")).strip().replace("\\", "/")
+        relative = PurePosixPath(raw_path)
+        relative_path = relative.as_posix()
+        if not raw_path or relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"`asset_disposition[{index}].path` must stay inside the target root.")
+        if relative_path in seen_paths:
+            raise ValueError(f"Duplicate asset disposition path: {relative_path}")
+        if action not in ASSET_DISPOSITION_ACTIONS:
+            raise ValueError(f"`asset_disposition[{index}].action` must be one of {sorted(ASSET_DISPOSITION_ACTIONS)}.")
+        if not reason:
+            raise ValueError(f"`asset_disposition[{index}].reason` must explain the migration decision.")
+        if action in ASSET_ACTIONS_REQUIRING_SUPPORTING_ASSET:
+            if not raw_supporting_path:
+                raise ValueError(f"`asset_disposition[{index}].supporting_asset_path` is required for action `{action}`.")
+            support_relative = PurePosixPath(raw_supporting_path)
+            supporting_path = support_relative.as_posix()
+            if support_relative.is_absolute() or ".." in support_relative.parts or supporting_path not in supporting_paths:
+                raise ValueError(
+                    f"`asset_disposition[{index}].supporting_asset_path` must match a generated supporting_assets path."
+                )
+        else:
+            supporting_path = ""
+            if raw_supporting_path and raw_supporting_path not in supporting_paths:
+                raise ValueError(
+                    f"`asset_disposition[{index}].supporting_asset_path` must match a generated supporting_assets path when provided."
+                )
+            if raw_supporting_path:
+                supporting_path = raw_supporting_path
+        seen_paths.add(relative_path)
+        entry = {"path": relative_path, "action": action, "reason": reason}
+        if supporting_path:
+            entry["supporting_asset_path"] = supporting_path
+        normalized.append(entry)
+    return normalized
+
+
+def normalize_design_asset_disposition(value: Any, supporting_assets: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Convert runtime camelCase design evidence into the authoring-spec shape."""
+
+    if not isinstance(value, list):
+        raise ValueError("`designEvidence.assetDisposition` must be an array.")
+    converted: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            converted.append(item)
+            continue
+        converted.append(
+            {
+                "path": item.get("path", ""),
+                "action": item.get("action", ""),
+                "reason": item.get("reason", ""),
+                "supporting_asset_path": item.get("supportingAssetPath", ""),
+            }
+        )
+    return normalize_asset_disposition(converted, supporting_assets)
+
+
 def normalize_task_model_policy(value: Any) -> dict[str, Any]:
     """Validate optional target workflow task-model metadata."""
 
@@ -455,6 +571,9 @@ def normalize_task_model_policy(value: Any) -> dict[str, Any]:
         return {"agent_task_models": {}}
     if not isinstance(value, dict):
         raise ValueError("`task_model_policy` must be an object when provided.")
+    unknown_keys = sorted(set(value) - {"agent_task_models"})
+    if unknown_keys:
+        raise ValueError(f"`task_model_policy` only supports `agent_task_models`; unknown keys: {unknown_keys}")
     raw_agent_task_models = value.get("agent_task_models", {})
     if raw_agent_task_models is None:
         raw_agent_task_models = {}
@@ -515,6 +634,7 @@ def generation_report(
     apply_requested: bool,
     managed_result: dict[str, Any] | None = None,
     supporting_assets: list[dict[str, str]] | None = None,
+    asset_disposition: list[dict[str, str]] | None = None,
     errors: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Build one normalized generation report."""
@@ -537,6 +657,7 @@ def generation_report(
             {"kind": item["kind"], "path": item["path"], "reason": item["reason"]}
             for item in (supporting_assets or [])
         ],
+        "asset_disposition": asset_disposition or [],
         "errors": errors or [],
     }
     return payload
@@ -722,6 +843,7 @@ def main() -> int:
                     generation_handoff_report=generation_handoff_report_path,
                     apply_requested=args.apply,
                     supporting_assets=spec["supporting_assets"],
+                    asset_disposition=spec["asset_disposition"],
                     errors=alignment_errors,
                 )
                 write_json(generation_path, payload)
@@ -750,6 +872,7 @@ def main() -> int:
                 generation_handoff_report=generation_handoff_report_path,
                 apply_requested=args.apply,
                 supporting_assets=spec["supporting_assets"],
+                asset_disposition=spec["asset_disposition"],
                 errors=validation["errors"],
             )
             write_json(generation_path, payload)
@@ -781,6 +904,7 @@ def main() -> int:
             apply_requested=args.apply,
             managed_result=managed_result,
             supporting_assets=spec["supporting_assets"],
+            asset_disposition=spec["asset_disposition"],
         )
         write_json(generation_path, payload)
         emit(payload, args.json)

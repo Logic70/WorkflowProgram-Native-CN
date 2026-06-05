@@ -106,6 +106,10 @@ M15 已将 product handoff 作为主路径；generator 仍是宿主侧 determini
 
 2. 将 handoff 中的 `authoringSpec` 原样序列化为 `RUN_ROOT/native-workflow-authoring.json`。不得根据 `designEvidence.lowLevelDesign`、聊天记录或模型自由判断重写 JS body；如果 `authoringSpec` 缺失或需要修改，必须重新调用产品 JS 的 Author 阶段，而不是前台手写。
 
+   - `supporting_assets` 只描述需要生成、更新或归档的资产内容。
+   - `asset_disposition` 独立描述 update/migrate 时每个现有或目标资产的 `retain | generate | update | archive | remove | defer | not-applicable` 决策。
+   - `task_model_policy` 只接受 `agent_task_models` 映射；不要在 authoring spec 中散落模型别名字段。
+
 3. 执行 staging，不传 `--apply`：
 
 ```text
@@ -130,7 +134,7 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-eviden
   --json
 ```
 
-4. 把输出作为 `args.generationEvidence` 重新调用产品 JS。
+4. 把输出作为 `args.generationEvidence` 重新调用产品 JS。输出中的 `workflowScriptPath` 必须是当前 candidate 的 `.claude/workflows/<WORKFLOW_NAME>.js` 绝对路径。非 PASS、candidate 为空、主 Workflow JS 不在标准路径或 evidence 文件不存在时必须保持阻断。
 
 ## Step 5: Deterministic Validation
 
@@ -143,21 +147,34 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-eviden
   --json
 ```
 
-把输出作为 `args.validationEvidence`。
+把输出作为 `args.validationEvidence`。`validationEvidence.workflowScriptPath` 必须与 `generationEvidence.workflowScriptPath` 完全一致，避免生成报告与验证报告指向同一 candidate tree 中的不同脚本。非 PASS 或主脚本不一致时保持 `BLOCKED_VALIDATION`。
 
 ## Step 6: Interactive Smoke
 
-通过宿主侧 Computer Use harness 或人工入口真实启动 Claude Code，验证 candidate 的 discovery、launch、Agent、schema、JS gate 和 blocker 路径。将 JSONL 或 transcript 路径规范化：
+通过宿主侧 Computer Use harness 或人工入口真实启动 Claude Code，验证 candidate 的 discovery、launch、Agent、schema、JS gate 和 blocker 路径。先使用 `build-native-interactive-smoke.py evaluate` 将真实 JSONL 判读为 evaluator 报告；不得把原始 JSONL、transcript 或手工状态字符串直接当作 smoke evidence。
+
+```text
+workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-interactive-smoke.py evaluate \
+  --workflow <WORKFLOW_NAME> \
+  --script-path <CANDIDATE_WORKFLOW_ABSOLUTE_PATH> \
+  --candidate-root <RUN_ROOT>/outputs/candidate \
+  --expected-status <EXPECTED_STATUS> \
+  --scenario-id <SCENARIO> \
+  --jsonl <REAL_SESSION_JSONL> \
+  --out <RUN_ROOT>/outputs/stages/native-workflow-interactive-smoke-<SCENARIO>.json
+```
+
+只有 evaluator 报告证明 `workflow_invoked`、`async_launched`、`agent_started`、`schema_result` 和预期完成状态后，才能规范化 smoke evidence：
 
 ```text
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-evidence.py smoke \
   --candidate-root <RUN_ROOT>/outputs/candidate \
   --status PASS \
-  --evidence <JSONL-or-transcript-path> \
+  --evidence <RUN_ROOT>/outputs/stages/native-workflow-interactive-smoke-<SCENARIO>.json \
   --json
 ```
 
-把输出作为 `args.smokeEvidence`。smoke 未执行或 evidence 路径不存在时必须保持阻断。
+把输出作为 `args.smokeEvidence`。输出必须包含非空 `smokeReports`，并绑定 evaluator 报告路径、hash、candidate `scriptPath`、`scriptHash`、`candidateHash`、scenario、run IDs 和证据 profile。smoke 未执行、链路证据不完整、启动路径不是当前 candidate 或 evaluator 报告路径不存在时必须保持阻断。
 
 ## Step 7: Controlled Apply
 
@@ -176,11 +193,12 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/managed-assets.py apply-sta
 ```text
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-evidence.py apply \
   --candidate-root <RUN_ROOT>/outputs/candidate \
+  --target-root <TARGET_ROOT> \
   --report <RUN_ROOT>/outputs/managed-change-result.json \
   --json
 ```
 
-把输出作为 `args.applyEvidence`。有 drift 或冲突时停止，不覆盖目标文件。
+把输出作为 `args.applyEvidence`。`applyEvidence.targetRoot` 必须匹配本次目标；`applyManifest` 必须是结构化对象，包含真实 managed manifest 路径、持久化 managed-change report 路径以及覆盖全部 candidate 文件的 `path`、`action`、`sha256` 条目。不得传入路径字符串或手工占位值。有 drift、冲突、目标不匹配、未覆盖资产或 hash 不一致时停止，不覆盖目标文件。
 
 ## Transitional Assets
 
@@ -196,6 +214,6 @@ workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-eviden
 - 产品 JS 的最终结构化 envelope
 - `native-workflow-generation.json`
 - `native-workflow-validation.json`
-- 交互式 smoke JSONL 或 transcript
+- 交互式 smoke 原始 JSONL 与 evaluator 报告
 - candidate tree
-- 用户批准时的 managed apply 结果和 manifest
+- 用户批准时的 managed apply 结果和结构化 manifest evidence

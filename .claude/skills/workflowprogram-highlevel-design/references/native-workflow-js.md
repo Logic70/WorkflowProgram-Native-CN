@@ -21,6 +21,13 @@ Document three layers separately:
 
 Retain a smoke test. Native runtime adoption removes duplicated orchestration code; it does not prove that final JavaScript, paths, schemas, permissions, and target behavior work together.
 
+## Evidence And Migration Decisions
+
+- Treat raw JSONL as smoke input, not smoke proof. A deterministic evaluator report must prove launch, asynchronous execution, Agent start, schema result, and the expected terminal state before a workflow can pass. For generated candidates, bind the report to the exact candidate `scriptPath`, script hash, candidate-tree hash, and a non-empty scenario identifier.
+- Treat controlled apply evidence as a target-bound structured managed-change result that covers every candidate asset, matches the persisted managed result and target manifest, and proves target file hashes. A path string is not an apply manifest.
+- Keep `supporting_assets` and `asset_disposition` separate. Supporting assets describe content to create or update; disposition records retain, update, archive, remove, defer, or not-applicable decisions for migration scope.
+- Do not impose fields such as `runId` on every workflow return unless the native runtime contract or a product-specific envelope requires them. Static validation should reject unsupported host-tool calls or bare references, reject dynamic code execution that hides them, and conservatively detect critical undeclared identifiers without inventing a second runtime API.
+
 ## Scope Questions
 
 Resolve:

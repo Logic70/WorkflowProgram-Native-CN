@@ -183,7 +183,7 @@ FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个
 - 前台 leaf Skill 只把 `READY_FOR_GENERATION.authoringSpec` 原样写入 `RUN_ROOT/native-workflow-authoring.json`，不得根据 LLD 或聊天上下文重写 JS body。
 - Generator 的 `--generation-handoff` 主路径必须验证 handoff 携带 `authoringSpec`，并验证磁盘 spec 与 handoff spec 等价；不一致时在创建 candidate 前失败。
 - `body` 是 meta 后的执行体，不是完整 JS 文件。`body` 内出现 `export const meta`、`import`、`require()`、`module.exports` 或重复完整文件头时属于 authoring spec 错误。
-- Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查。
+- Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查；动态代码执行不得用于隐藏宿主工具引用。
 - `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
 
 ## 6. 运行时视图
@@ -416,3 +416,15 @@ M12 已完成确定性 manifest 与资格聚合层：`build-native-workflow-mani
 M14 新增 `native-legacy-retirement-assessment` schema 与 `assess-native-legacy-retirement.py` 评估器，用于追踪 legacy 资产下线资格。当前仓库稳定返回 `BLOCKED_RETIREMENT`；实际删除 deferred。
 
 M15 新增 `native-workflow-generation-handoff-validation` report，并将 `generate-native-workflow.py` 的主路径切换为 `--generation-handoff`。`transitional-renderer-bridge-active` blocker 只在 active skill/command 引用 M7 兼容资产时触发。M16 关闭 rollback/deprecation anchor 与 legacy routing blocker；当前仓库仅剩完整产品交互式 smoke blocker。
+
+## 15. FreeSTRIDE 迁移反馈后的稳态收敛
+
+FreeSTRIDE 迁移暴露了“候选文件存在但无法真实启动、浅证据仍获得 PASS、手工复制被误判为 managed apply”的系统性风险。稳态架构增加以下约束：
+
+- Native Workflow JS 仍只使用 `args`、`budget`、`phase`、`agent`、`parallel`、`pipeline`、`workflow`、`log` 等已验证原语。`Bash()`、`Read()`、`Write()` 等宿主工具不是 JS 全局变量，必须由 Agent 或确定性脚本承担。
+- 静态校验只做高置信度检查：拒绝宿主工具的直接调用或裸引用、拒绝 `eval()` / `Function()` 动态执行、拒绝已知关键未声明标识符，但不宣称替代完整 JavaScript lint。
+- Generation 与 Validation 的 PASS 必须来自对应真实 schema 报告，并指向当前 candidate tree 中同一个 `.claude/workflows/*.js` 主脚本；任意 `{"status":"PASS"}` JSON 或同一候选树中不同脚本之间的证据拼接都不是有效 evidence。
+- Interactive smoke 的 PASS 必须来自 evaluator 报告，并证明 Workflow 调用、异步启动、非空 run ID、Agent 启动、结构化 schema 输出和预期 completion。生成候选的报告还必须绑定实际调用的 candidate `scriptPath`、`scriptHash`、`candidateHash` 与非空 scenario；`early-blocker` profile 只允许预期状态为 `BLOCKED` 的场景。同名旧脚本的结果不能复用。原始 JSONL 或 transcript 路径不是 smoke evidence。
+- Controlled Apply 的 PASS 必须绑定本次 `targetRoot`、真实且持久化的 `managed-change-result`、目标 `.workflowprogram/managed-files.json`、候选文件 hash 覆盖和目标文件当前 hash。`applyManifest` 是结构化对象，不是路径字符串或操作日志描述。
+- `supporting_assets` 与 `asset_disposition` 分离：前者只描述候选树中要生成的文件，后者描述 update/migrate 时已有与目标资产的 retain、generate、update、archive、remove、defer 或 not-applicable 决策。
+- archive 和 remove 在当前 managed apply 未证明执行前，只能作为显式迁移后续动作，不能在交付结果中宣称已完成。

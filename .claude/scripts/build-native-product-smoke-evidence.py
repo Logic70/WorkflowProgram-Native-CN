@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,6 +78,73 @@ def workflow_key(value: Any) -> str | None:
     return None
 
 
+def is_absolute_path_ref(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    text = value.strip()
+    return text.startswith("/") or text.startswith("\\\\") or bool(re.match(r"^[A-Za-z]:[\\/]", text))
+
+
+def script_stem(value: str) -> str:
+    """Return a path basename without the `.js` suffix across host path styles."""
+
+    name = value.strip().replace("\\", "/").rsplit("/", 1)[-1]
+    return name[:-3] if name.endswith(".js") else name
+
+
+def evaluator_rejection(report: dict[str, Any]) -> str | None:
+    """Return a rejection reason when a report is not a complete evaluator result."""
+
+    if report.get("schema_name") != "native-workflow-interactive-smoke":
+        return "schema_name is not native-workflow-interactive-smoke"
+    if report.get("schema_version") != 1:
+        return "schema_version is not 1"
+    if report.get("status") != "PASS":
+        return f"status is {report.get('status')!r}, expected 'PASS'"
+    if report.get("return_code") != 0:
+        return f"return_code is {report.get('return_code')!r}, expected 0"
+    if report.get("blockingIssues") != []:
+        return "blockingIssues must be an empty array"
+    if not isinstance(report.get("scenario"), str) or not report["scenario"].strip():
+        return "scenario must be a non-empty string"
+    if not is_absolute_path_ref(report.get("scriptPath")):
+        return "scriptPath must be an absolute path"
+    wf_key = workflow_key(report.get("workflow"))
+    if wf_key is not None and script_stem(report["scriptPath"]) != f"workflowprogram-{wf_key}":
+        return "scriptPath basename must match the reported product workflow"
+    run_ids = report.get("runIds")
+    if not isinstance(run_ids, list) or not run_ids or not all(isinstance(item, str) and item.strip() for item in run_ids):
+        return "runIds must be a non-empty string array"
+    evidence = report.get("evidence")
+    if not isinstance(evidence, dict):
+        return "missing evidence object"
+    if evidence.get("workflow_invoked") is not True:
+        return "evidence.workflow_invoked must be true"
+    if evidence.get("async_launched") is not True:
+        return "evidence.async_launched must be true"
+
+    expected_status = report.get("expectedStatus")
+    profile = report.get("evidenceProfile")
+    if expected_status not in {"PASS", "BLOCKED"}:
+        return "expectedStatus must be PASS or BLOCKED"
+    if profile not in {"full", "early-blocker", "completion", "agent-schema"}:
+        return "evidenceProfile is invalid"
+    if profile == "early-blocker" and expected_status != "BLOCKED":
+        return "early-blocker evidenceProfile is only valid with expectedStatus BLOCKED"
+    if profile in {"full", "agent-schema"} and (
+        evidence.get("agent_started") is not True or evidence.get("schema_result") is not True
+    ):
+        return f"{profile} evidence requires agent_started and schema_result"
+    if profile in {"full", "early-blocker", "completion"}:
+        completion_key = "completed_pass" if expected_status == "PASS" else "completed_blocked"
+        opposite_key = "completed_blocked" if expected_status == "PASS" else "completed_pass"
+        if evidence.get(completion_key) is not True:
+            return f"{profile} evidence requires {completion_key}"
+        if evidence.get(opposite_key) is True:
+            return f"{profile} evidence contains unexpected {opposite_key}"
+    return None
+
+
 def aggregate(evaluation_paths: list[Path]) -> dict[str, Any]:
     flags = {key: False for key in REQUIRED_FLAGS}
     source_evaluations: list[dict[str, Any]] = []
@@ -89,11 +157,9 @@ def aggregate(evaluation_paths: list[Path]) -> dict[str, Any]:
             rejected.append({"path": str(path), "reason": str(exc)})
             continue
 
-        if report.get("schema_name") != "native-workflow-interactive-smoke":
-            rejected.append({"path": str(path), "reason": "schema_name is not native-workflow-interactive-smoke"})
-            continue
-        if report.get("status") != "PASS":
-            rejected.append({"path": str(path), "reason": f"status is {report.get('status')!r}, expected 'PASS'"})
+        rejection = evaluator_rejection(report)
+        if rejection:
+            rejected.append({"path": str(path), "reason": rejection})
             continue
 
         wf_key = workflow_key(report.get("workflow"))
@@ -101,10 +167,7 @@ def aggregate(evaluation_paths: list[Path]) -> dict[str, Any]:
             rejected.append({"path": str(path), "reason": f"unknown workflow {report.get('workflow')!r}"})
             continue
 
-        evidence = report.get("evidence")
-        if not isinstance(evidence, dict):
-            rejected.append({"path": str(path), "reason": "missing evidence object"})
-            continue
+        evidence = report["evidence"]
 
         flags[wf_key] = True
         if evidence.get("skill_listing") is True:
@@ -124,6 +187,8 @@ def aggregate(evaluation_paths: list[Path]) -> dict[str, Any]:
             {
                 "path": str(path),
                 "workflow": report.get("workflow"),
+                "scriptPath": report.get("scriptPath"),
+                "expectedStatus": report.get("expectedStatus"),
                 "scenario": report.get("scenario"),
                 "evidenceProfile": report.get("evidenceProfile"),
                 "runIds": report.get("runIds", []),

@@ -10,16 +10,26 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / ".claude" / "scripts" / "build-native-product-smoke-evidence.py"
 
 
-def write_eval(path: Path, workflow: str, evidence: dict) -> None:
+def write_eval(
+    path: Path,
+    workflow: str,
+    evidence: dict,
+    *,
+    expected_status: str = "PASS",
+    evidence_profile: str = "full",
+) -> None:
     path.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "schema_name": "native-workflow-interactive-smoke",
                 "status": "PASS",
+                "return_code": 0,
                 "workflow": workflow,
+                "scriptPath": str((path.parent / f"{workflow}.js").resolve()),
+                "expectedStatus": expected_status,
                 "scenario": path.stem,
-                "evidenceProfile": "full",
+                "evidenceProfile": evidence_profile,
                 "runIds": ["wf_test"],
                 "jsonl": str(path.with_suffix(".jsonl")),
                 "journalJsonl": None,
@@ -57,10 +67,23 @@ def test_complete_evaluator_reports_close_product_smoke_gate(tmp_path: Path) -> 
         if name == "develop":
             evidence["agent_started"] = True
             evidence["schema_result"] = True
+        if name != "validate":
             evidence["completed_pass"] = True
         if name == "validate":
             evidence["completed_blocked"] = True
-        write_eval(path, f"workflowprogram-{name}", evidence)
+        write_eval(
+            path,
+            f"workflowprogram-{name}",
+            evidence,
+            expected_status="BLOCKED" if name == "validate" else "PASS",
+            evidence_profile=(
+                "early-blocker"
+                if name == "validate"
+                else "full"
+                if name == "develop"
+                else "completion"
+            ),
+        )
         paths.append(path)
 
     completed = run_aggregate(tmp_path, *paths)
@@ -117,6 +140,109 @@ def test_rejects_non_evaluator_reports(tmp_path: Path) -> None:
     assert payload["rejectedEvaluations"][0]["path"] == str(path)
 
 
+def test_rejects_shallow_evaluator_pass_report(tmp_path: Path) -> None:
+    path = tmp_path / "shallow.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "schema_name": "native-workflow-interactive-smoke",
+                "status": "PASS",
+                "workflow": "workflowprogram-develop",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = run_aggregate(tmp_path, path)
+    payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 1
+    assert payload["sourceEvaluations"] == []
+    assert "return_code" in payload["rejectedEvaluations"][0]["reason"]
+
+
+def test_rejects_unknown_evaluator_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "wrong-version.json"
+    write_eval(
+        path,
+        "workflowprogram-develop",
+        {
+            "skill_listing": True,
+            "workflow_invoked": True,
+            "async_launched": True,
+            "agent_started": True,
+            "schema_result": True,
+            "completed_pass": True,
+            "completed_blocked": False,
+            "environment_disabled": False,
+        },
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 2
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = run_aggregate(tmp_path, path)
+    aggregate_payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 1
+    assert "schema_version" in aggregate_payload["rejectedEvaluations"][0]["reason"]
+
+
+def test_rejects_early_blocker_profile_for_pass_status(tmp_path: Path) -> None:
+    path = tmp_path / "early-blocker-pass.json"
+    write_eval(
+        path,
+        "workflowprogram-develop",
+        {
+            "skill_listing": True,
+            "workflow_invoked": True,
+            "async_launched": True,
+            "agent_started": False,
+            "schema_result": False,
+            "completed_pass": True,
+            "completed_blocked": False,
+            "environment_disabled": False,
+        },
+        expected_status="PASS",
+        evidence_profile="early-blocker",
+    )
+
+    completed = run_aggregate(tmp_path, path)
+    aggregate_payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 1
+    assert "early-blocker" in aggregate_payload["rejectedEvaluations"][0]["reason"]
+
+
+def test_rejects_report_when_workflow_does_not_match_script_path(tmp_path: Path) -> None:
+    path = tmp_path / "mismatched-script.json"
+    write_eval(
+        path,
+        "workflowprogram-develop",
+        {
+            "skill_listing": True,
+            "workflow_invoked": True,
+            "async_launched": True,
+            "agent_started": True,
+            "schema_result": True,
+            "completed_pass": True,
+            "completed_blocked": False,
+            "environment_disabled": False,
+        },
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["scriptPath"] = str((tmp_path / "workflowprogram-validate.js").resolve())
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = run_aggregate(tmp_path, path)
+    aggregate_payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 1
+    assert aggregate_payload["sourceEvaluations"] == []
+    assert "scriptPath" in aggregate_payload["rejectedEvaluations"][0]["reason"]
+
+
 def test_accepts_utf8_bom_evaluator_report(tmp_path: Path) -> None:
     path = tmp_path / "develop-bom.json"
     evidence = {
@@ -126,14 +252,17 @@ def test_accepts_utf8_bom_evaluator_report(tmp_path: Path) -> None:
         "agent_started": True,
         "schema_result": True,
         "completed_pass": True,
-        "completed_blocked": True,
+        "completed_blocked": False,
         "environment_disabled": False,
     }
     payload = {
         "schema_version": 1,
         "schema_name": "native-workflow-interactive-smoke",
         "status": "PASS",
+        "return_code": 0,
         "workflow": "workflowprogram-develop",
+        "scriptPath": str((tmp_path / "workflowprogram-develop.js").resolve()),
+        "expectedStatus": "PASS",
         "scenario": "bom",
         "evidenceProfile": "completion",
         "runIds": ["wf_bom"],

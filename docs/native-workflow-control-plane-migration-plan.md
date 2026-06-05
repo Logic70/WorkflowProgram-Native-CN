@@ -533,3 +533,14 @@ M11 v1 已完成：
 - M7 证明交互式 Native authoring 的最小方向可行；M9-M10C 已迁移五个 WorkflowProgram 产品控制面。完整真实交互 smoke 和 legacy 下线评估仍属于后续阶段。
 - M8 已完成：真实 CLI 通过绝对 `scriptPath` 成功启动插件产品骨架；同一会话中的 name lookup 失败证明插件目录不会自动注册为 saved workflow。
 - M11 v1（packet + evaluate）、M12 副作用幂等和 M13 按任务类型选择模型已完成；M16 新增 product smoke evidence 聚合器，只接受 evaluator 报告并在覆盖不完整时保持 `declaredComplete=false`。完整 Computer Use 终端驱动仍等待允许的非终端集成；legacy 实际删除仍等待 product smoke 关闭。
+
+## 10. FreeSTRIDE 迁移反馈后的门禁
+
+FreeSTRIDE 首次 Native 迁移暴露出静态校验、smoke 证据和 apply 证据之间可以出现伪闭环。后续迁移必须满足以下顺序，任何一步失败都不得切换入口或下线旧 runtime：
+
+1. 静态 validator 拒绝未支持的宿主工具直接调用或裸引用、动态代码执行和关键未声明标识符；generation/validation evidence 仅接受对应真实 schema 报告，并必须指向同一个 `.claude/workflows/*.js` 主脚本；不得通过新增非原生返回字段、手工 PASS JSON 或同一候选树中的不同脚本拼接代替语义校验。
+2. smoke 仅接受 `build-native-interactive-smoke.py evaluate` 生成的报告，并要求报告证明 Workflow launch、异步运行、Agent 启动、schema 结果和预期完成状态，同时绑定当前 candidate `scriptPath`、`scriptHash`、`candidateHash` 和非空 scenario；`early-blocker` profile 只能用于预期 `BLOCKED` 的场景。
+3. controlled apply 必须显式绑定 `targetRoot`，仅接受由持久化 `RUN_ROOT/outputs/managed-change-result.json` 和目标 managed manifest 构建的结构化 `applyManifest`，且必须覆盖全部 candidate 文件并校验目标文件当前 hash。
+4. update/migrate authoring 必须提供独立 `asset_disposition`；`supporting_assets` 只在确实需要生成、更新或归档内容时提供。
+5. `task_model_policy` 只承载 `agent_task_models` 映射；未知字段在生成前失败。
+6. 入口切换、旧 runtime 归档和 managed-files 更新均晚于真实 smoke 与 apply 证据闭合。

@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-04T04:02:10Z",
+  "generated_at": "2026-06-05T01:36:39Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.3",
-  "source_commit": "6494191ba6033f29602b03614d10b5a585e7e5f2",
+  "source_commit": "1ac35bc9fc39dc0fa4556a5238b834f14167ac16",
   "source_dirty": true,
   "files": [
     {
@@ -134,8 +134,8 @@
     },
     {
       "path": "rules/constraints.md",
-      "sha256": "3d36ee804ad4d60957776b1df589c7d2f9862b4395956e8dca73396f08b4c49e",
-      "size": 3900
+      "sha256": "dad4c0e7722b8f204949eba01e627a17aca4710da3b561dbb62f7cda964676c3",
+      "size": 4385
     },
     {
       "path": "runtime-manifest.json",
@@ -164,13 +164,13 @@
     },
     {
       "path": "scripts/build-native-develop-evidence.py",
-      "sha256": "2a4f227709861eca887cb7a7adb3da198907ca56a39bd535a6b774af17b7c354",
-      "size": 5739
+      "sha256": "ac19bfee9cfceb1825305978cb71ef1ebaaf2b8b0634aaa9f790d00b4e6f8268",
+      "size": 21216
     },
     {
       "path": "scripts/build-native-interactive-smoke.py",
-      "sha256": "b4c2c661a746ea0f5fa895672eeec0ad7dae5bd1ece5068d390b0847d58d6042",
-      "size": 38640
+      "sha256": "af9322efc62d6bc614d18d0219bec14df215eed3f859d8165fc4d7ca01018676",
+      "size": 43009
     },
     {
       "path": "scripts/build-native-iterate-evidence.py",
@@ -179,8 +179,8 @@
     },
     {
       "path": "scripts/build-native-product-smoke-evidence.py",
-      "sha256": "a08e1bab90059ab21de4905a5c55a9bd020f6da7b497ddd262086e7f0011bf36",
-      "size": 6036
+      "sha256": "bb1f89e6dbf38480470061a37ecbffe7f5576d9dc966392b40d1369c24b217ed",
+      "size": 9216
     },
     {
       "path": "scripts/build-native-publish-evidence.py",
@@ -229,8 +229,8 @@
     },
     {
       "path": "scripts/generate-native-workflow.py",
-      "sha256": "2d1090e22f672ab841ee06d0948adeca9f6a0c7e505f6b873c8a50002ff60afc",
-      "size": 36659
+      "sha256": "39d49ce8bbfefabd7da11884948da958dc04afc57667da06d3121f2fd10871b1",
+      "size": 43707
     },
     {
       "path": "scripts/generate-target-runtime.py",
@@ -429,8 +429,8 @@
     },
     {
       "path": "scripts/validate-native-workflow-js.py",
-      "sha256": "952e92a7a41052cb03cc8db9993e49798eb94f848c3dc6f206a3c4698846c0c9",
-      "size": 16866
+      "sha256": "5e4a316f381c0845f620b6f05ae965d63382653845740cd425a5b9512c369f81",
+      "size": 22272
     },
     {
       "path": "scripts/validate-publish-eligibility.py",
@@ -644,8 +644,8 @@
     },
     {
       "path": "skills/workflowprogram-highlevel-design/references/native-workflow-js.md",
-      "sha256": "c0fa9508f3fa0791897a8cf89819914dce085ac9dc2cce81b965ea6bfcd82cd1",
-      "size": 1797
+      "sha256": "41d0ab0004af2132cbd2e3915cc9eddee8473d20eaa232f599e2960f5bc1ac43",
+      "size": 3045
     },
     {
       "path": "skills/workflowprogram-highlevel-design/references/review-checklist.md",
@@ -674,8 +674,8 @@
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/references/native-workflow-js.md",
-      "sha256": "774df50cb55621292455859697be4056c41f34cdd4b2db48ad54ce7a12997d55",
-      "size": 2904
+      "sha256": "44766af925312292d5456543dbbcfa91f180e7c49f8f3710d8785b4eed5f08e5",
+      "size": 5539
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/references/review-checklist.md",
@@ -694,8 +694,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "ae84943b0126a00b7c375e31383c3ef45314bfbc22e9009ad6b4d5d4c1f61a57",
-      "size": 8709
+      "sha256": "574b3e95c327dcea2643b194f195e3d47ee543bda8278c7a33e7d8b67dbb0426",
+      "size": 11024
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -719,8 +719,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "1256cf2462bf5952b4939fc6a904dc1ee0b8111104bccd3f7ad8cb69d4c1e918",
-      "size": 19686
+      "sha256": "bd666da318bd483435ec16315995f1860d894941155b0d7b818ea7119998506c",
+      "size": 28091
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

@@ -21,6 +21,37 @@
 
 - 抽取独立工作流仓时，继续加强“格式契约”和“工作区写边界”提示。
 
+## 2026-06-04 - Native Workflow 证据与验证硬化
+
+### Context
+- FreeSTRIDE 首次 Native 迁移通过了静态校验和浅层 smoke，但真实 Workflow launch 因直接调用未提供的 `Bash()` 失败。
+- 根因不是缺少统一返回字段，而是静态 validator、smoke evaluator、controlled apply 与迁移资产契约之间没有形成事实闭环。
+
+### What Worked
+- 将宿主工具误用、关键未声明标识符、candidate `scriptPath`、evaluator 报告、managed manifest 和 candidate hash 都转为确定性校验项。
+- 保留 Native Workflow JS 的原生返回自由度；有效最小工作流不需要为了通过 validator 伪造 `runId`。
+- 将 `supporting_assets` 与 `asset_disposition` 分离后，可以表达 retain/remove/defer 等不需要内容生成的迁移决策。
+
+### What Did Not Work
+- 把原始 JSONL、非空字符串或路径字符串当作 evidence，只能证明“有文件”或“有文本”，不能证明工作流真的执行成功或资产真的受管。
+- 把任意 `{"status":"PASS"}` JSON 当作 generation 或 validation report，会让确定性 gate 退化为模型自述。
+- 把 disposition 塞进 supporting asset，会迫使 retain-only 迁移伪造内容资产。
+- 为所有 return envelope 强制增加 `runId` 会发明不存在的 Native runtime 契约，并掩盖真正的未声明标识符问题。
+
+### Constraints To Extract
+- ALWAYS 将原始 JSONL 作为 evaluator 输入，而不是 smoke PASS 证据。
+- ALWAYS 将 evaluator 报告绑定到实际 candidate `scriptPath`、脚本 hash 和 candidate tree hash。
+- ALWAYS 要求 generation 和 validation evidence 使用对应真实 report schema，并指向当前 candidate tree。
+- ALWAYS 让 apply evidence 覆盖全部 candidate 文件，并与 persisted managed manifest 的 hash 一致。
+- ALWAYS 让 apply evidence 显式绑定目标根、持久化 managed result 和目标文件当前 hash，不能只校验旁路 manifest。
+- ALWAYS 分离资产内容与迁移处置决策。
+- ALWAYS 拒绝未支持的宿主工具直接调用或裸引用、动态代码执行，并保守检测关键未声明标识符。
+- NEVER 通过增加非原生返回字段来代替运行时语义校验。
+
+### Follow-Ups
+- 构建并同步 `dist/plugin/` 产物。
+- 使用修复后的契约重新迁移 FreeSTRIDE，并运行真实 `scriptPath` smoke。
+
 ## 2026-04-18 - 控制面脚本调用硬化（stage-progress）
 
 ### Context

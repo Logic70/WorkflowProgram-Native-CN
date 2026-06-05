@@ -1,0 +1,4 @@
+{
+  "knownGoodRef": "v0.1.18",
+  "deprecationNotice": "Legacy runtime v0.x is deprecated for WorkflowProgram-Native-CN. Keep it available for rollback until full product interactive smoke evidence is declared complete."
+}

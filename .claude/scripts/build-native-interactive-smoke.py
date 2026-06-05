@@ -13,13 +13,15 @@ Usage:
 
     python build-native-interactive-smoke.py evaluate \
         --jsonl <session.jsonl> --workflow <name> --expected-status PASS|BLOCKED \
+        [--script-path <path> --candidate-root <path>] \
         [--journal-jsonl <journal.jsonl>] [--scenario-id ID] \
-        [--evidence-profile full|early-blocker|completion|agent-schema] [--json]
+        [--evidence-profile full|early-blocker|completion|agent-schema] [--out PATH] [--json]
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -87,12 +89,15 @@ def _parse_args() -> argparse.Namespace:
     ev.add_argument("--jsonl", required=True, help="Claude Code session JSONL path")
     ev.add_argument("--journal-jsonl", default="", help="Optional journal JSONL for subagent evidence")
     ev.add_argument("--workflow", required=True, help="Workflow name")
+    ev.add_argument("--script-path", default="", help="Expected absolute candidate Workflow JS path")
+    ev.add_argument("--candidate-root", default="", help="Expected candidate tree root; requires --script-path")
     ev.add_argument("--expected-status", required=True, choices=sorted(VALID_EXPECTED_STATUSES))
     ev.add_argument("--scenario-id", default="", help="Optional scenario identifier")
     ev.add_argument("--evidence-profile", default="full", choices=sorted(VALID_EVIDENCE_PROFILES),
                     help="Evidence classification profile (default: full)")
     ev.add_argument("--required-agent-attribution", action="append", default=[],
                     help="Agent attribution that must be visible in session or journal JSONL")
+    ev.add_argument("--out", default="", help="Write evaluation JSON to file")
     ev.add_argument("--json", action="store_true", help="Print JSON evaluation result")
 
     return parser.parse_args()
@@ -112,6 +117,86 @@ def _validate_absolute_path(path_str: str) -> None:
     raise ValueError(
         f"scriptPath must be an absolute path (POSIX /… or Windows X:\\…): {path_str}"
     )
+
+
+def _normalize_path_ref(value: str) -> str:
+    """Normalize path separators for JSONL scriptPath comparison."""
+
+    normalized = value.strip().replace("\\", "/")
+    wsl_match = re.match(r"^/mnt/([A-Za-z])/(.*)$", normalized)
+    if wsl_match:
+        normalized = f"{wsl_match.group(1).lower()}:/{wsl_match.group(2)}"
+    if re.match(r"^[A-Za-z]:/", normalized):
+        normalized = normalized[0].lower() + normalized[1:]
+    return normalized.rstrip("/")
+
+
+def _contains_exact_token(text: str, token: str) -> bool:
+    """Return true when token appears as a standalone identifier-like value."""
+
+    pattern = rf"(?<![A-Za-z0-9_.:-]){re.escape(token)}(?![A-Za-z0-9_.:-])"
+    return re.search(pattern, text) is not None
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _candidate_hash(root: Path) -> str:
+    """Hash candidate relative paths and bytes using the develop evidence format."""
+
+    files = sorted(path for path in root.rglob("*") if path.is_file())
+    if not files:
+        raise ValueError(f"Candidate root is empty: {root}")
+    digest = hashlib.sha256()
+    for path in files:
+        relative = path.relative_to(root).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _strict_candidate_binding(args: argparse.Namespace) -> Dict[str, str]:
+    """Validate optional invocation/candidate inputs and return report binding fields."""
+
+    if args.candidate_root and not args.script_path:
+        raise ValueError("--candidate-root requires --script-path.")
+    if not args.script_path:
+        return {}
+    _validate_absolute_path(args.script_path)
+    binding = {"scriptPath": args.script_path}
+    if not args.candidate_root:
+        return binding
+    _validate_absolute_path(args.candidate_root)
+    script_path = Path(args.script_path).resolve()
+    candidate_root = Path(args.candidate_root).resolve()
+    if not candidate_root.is_dir():
+        raise FileNotFoundError(f"Candidate root not found: {candidate_root}")
+    if not script_path.is_file():
+        raise FileNotFoundError(f"Candidate workflow script not found: {script_path}")
+    expected_relative = Path(".claude") / "workflows" / f"{args.workflow}.js"
+    if script_path != (candidate_root / expected_relative).resolve():
+        raise ValueError(
+            f"scriptPath must identify the candidate workflow file `{expected_relative.as_posix()}`."
+        )
+    return {
+        "scriptPath": str(script_path),
+        "scriptHash": f"sha256:{_sha256_file(script_path)}",
+        "candidateHash": _candidate_hash(candidate_root),
+    }
+
+
+def _emit_evaluation(payload: Dict[str, Any], args: argparse.Namespace) -> None:
+    """Write and/or print one evaluator payload."""
+
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.json or not args.out:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 # ── packet ─────────────────────────────────────────────────────
@@ -346,7 +431,7 @@ def _collect_agent_attributions_from_text(
         _record_agent_attribution(match.group(1), line_number, attributions, matching_lines)
 
 
-def _classify_line_structural(record: dict, workflow: str) -> set:
+def _classify_line_structural(record: dict, workflow: str, script_path: str = "") -> set:
     """Detect evidence keys from a parsed JSON record using structure.
 
     Returns a set of evidence key names matched structurally.
@@ -365,7 +450,7 @@ def _classify_line_structural(record: dict, workflow: str) -> set:
             skills = node.get("skills") or node.get("names") or []
             content = node.get("content", "")
             if (isinstance(skills, list) and workflow in skills) or (
-                isinstance(content, str) and workflow in content
+                isinstance(content, str) and _contains_exact_token(content, workflow)
             ):
                 keys.add("skill_listing")
             elif workflow.startswith("workflowprogram-") and _has_workflowprogram_skill_listing(
@@ -378,8 +463,12 @@ def _classify_line_structural(record: dict, workflow: str) -> set:
             rt == "tool_use" and node.get("name") == "Workflow"
         ):
             inp = node.get("input", {})
-            script_path = inp.get("scriptPath") if isinstance(inp, dict) else None
-            if isinstance(script_path, str) and workflow in script_path:
+            invoked_path = inp.get("scriptPath") if isinstance(inp, dict) else None
+            if isinstance(invoked_path, str) and (
+                (_normalize_path_ref(invoked_path) == _normalize_path_ref(script_path))
+                if script_path
+                else workflow in invoked_path
+            ):
                 keys.add("workflow_invoked")
 
         # Real sessions store this under the outer user event's toolUseResult.
@@ -589,6 +678,7 @@ def classify_evidence(
     jsonl_path: Path,
     workflow: str,
     journal_jsonl_path: Optional[Path] = None,
+    script_path: str = "",
 ) -> Dict[str, Any]:
     main_lines = _read_jsonl(jsonl_path)
     extra_lines: List[str] = []
@@ -616,7 +706,7 @@ def classify_evidence(
             _collect_agent_attributions(record, line_number, agent_attributions, agent_attribution_lines)
 
             # Structural evidence keys
-            struct_keys = _classify_line_structural(record, workflow)
+            struct_keys = _classify_line_structural(record, workflow, script_path)
             for key in struct_keys:
                 evidence[key] = True
                 matching_lines[key].append(line_number)
@@ -643,14 +733,15 @@ def classify_evidence(
 
         # ── Fallback substring matching (NOT for user messages) ─
         # skill_listing fallback
-        if not evidence["skill_listing"] and workflow in line and "skill_listing" in line:
+        if not evidence["skill_listing"] and _contains_exact_token(line, workflow) and "skill_listing" in line:
             evidence["skill_listing"] = True
             matching_lines["skill_listing"].append(line_number)
 
         # workflow_invoked fallback
         if not evidence["workflow_invoked"] and workflow in line and "Workflow" in line and "scriptPath" in line:
-            evidence["workflow_invoked"] = True
-            matching_lines["workflow_invoked"].append(line_number)
+            if not script_path or _normalize_path_ref(script_path) in _normalize_path_ref(line):
+                evidence["workflow_invoked"] = True
+                matching_lines["workflow_invoked"].append(line_number)
 
         # async_launched fallback
         if not evidence["async_launched"] and "async_launched" in line:
@@ -817,6 +908,21 @@ def _determine_status(
 
 
 def run_evaluate(args: argparse.Namespace) -> int:
+    try:
+        candidate_binding = _strict_candidate_binding(args)
+    except Exception as exc:
+        payload = {
+            "schema_version": 1,
+            "schema_name": "native-workflow-interactive-smoke",
+            "status": "INCONCLUSIVE",
+            "return_code": 1,
+            "error": str(exc),
+            "evidenceProfile": args.evidence_profile,
+            "blockingIssues": [str(exc)],
+        }
+        _emit_evaluation(payload, args)
+        return 1
+
     # Validate evidence-profile + expected-status compatibility
     if args.evidence_profile == "early-blocker" and args.expected_status != "BLOCKED":
         payload = {
@@ -829,7 +935,7 @@ def run_evaluate(args: argparse.Namespace) -> int:
                 "evidence-profile 'early-blocker' is only valid with expected-status BLOCKED"
             ],
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _emit_evaluation(payload, args)
         return 1
 
     jsonl_path = Path(args.jsonl)
@@ -845,7 +951,7 @@ def run_evaluate(args: argparse.Namespace) -> int:
             "evidenceProfile": args.evidence_profile,
             "blockingIssues": [f"JSONL file not found: {args.jsonl}"],
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _emit_evaluation(payload, args)
         return 1
     except Exception as exc:
         payload = {
@@ -857,7 +963,7 @@ def run_evaluate(args: argparse.Namespace) -> int:
             "evidenceProfile": args.evidence_profile,
             "blockingIssues": [f"Failed to read JSONL: {exc}"],
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _emit_evaluation(payload, args)
         return 1
 
     journal_path: Optional[Path] = None
@@ -875,13 +981,13 @@ def run_evaluate(args: argparse.Namespace) -> int:
                     f"Specified --journal-jsonl does not exist: {args.journal_jsonl}"
                 ],
             }
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            _emit_evaluation(payload, args)
             return 1
 
     expected = args.expected_status.upper()
 
     try:
-        result = classify_evidence(jsonl_path, args.workflow, journal_path)
+        result = classify_evidence(jsonl_path, args.workflow, journal_path, candidate_binding.get("scriptPath", ""))
     except Exception as exc:
         payload = {
             "schema_version": 1,
@@ -892,7 +998,7 @@ def run_evaluate(args: argparse.Namespace) -> int:
             "evidenceProfile": args.evidence_profile,
             "blockingIssues": [f"Evidence classification failed: {exc}"],
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _emit_evaluation(payload, args)
         return 1
 
     status_result = _determine_status(result["evidence"], expected, args.evidence_profile)
@@ -921,8 +1027,10 @@ def run_evaluate(args: argparse.Namespace) -> int:
         "status": status_result["status"],
         "return_code": status_result["return_code"],
         "evidenceProfile": args.evidence_profile,
+        "expectedStatus": expected,
         "scenario": args.scenario_id or None,
         "workflow": args.workflow,
+        **candidate_binding,
         "jsonl": str(jsonl_path.resolve()),
         "journalJsonl": result["journal_jsonl"],
         "runIds": result["run_ids"],
@@ -939,7 +1047,7 @@ def run_evaluate(args: argparse.Namespace) -> int:
         },
     }
 
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    _emit_evaluation(payload, args)
     return status_result["return_code"]
 
 

@@ -161,7 +161,7 @@ def test_packet_expected_evidence_types_vary_by_status() -> None:
 # ── evaluate: PASS evidence ─────────────────────────────────────
 
 
-def _build_pass_jsonl_lines() -> list[dict]:
+def _build_pass_jsonl_lines(script_path: str = SCRIPT_PATH) -> list[dict]:
     return [
         {
             "type": "user",
@@ -175,7 +175,7 @@ def _build_pass_jsonl_lines() -> list[dict]:
             "type": "assistant",
             "tool": "Workflow",
             "input": {
-                "scriptPath": SCRIPT_PATH,
+                "scriptPath": script_path,
                 "args": {"runId": "run-001"},
             },
         },
@@ -239,6 +239,79 @@ def test_evaluate_classifies_complete_pass_evidence(tmp_path: Path) -> None:
     assert "wf_c719aa99-826" in payload["runIds"]
     assert len(payload["matching_lines"]["skill_listing"]) > 0
     assert len(payload["matching_lines"]["completed_pass"]) > 0
+
+
+def test_evaluate_binds_script_path_and_writes_report(tmp_path: Path) -> None:
+    candidate_root = tmp_path / "candidate"
+    script = candidate_root / ".claude" / "workflows" / f"{WORKFLOW}.js"
+    script.parent.mkdir(parents=True)
+    script.write_text("return { status: 'PASS' }\n", encoding="utf-8")
+    jsonl = tmp_path / "pass.jsonl"
+    out = tmp_path / "evaluation.json"
+    write_jsonl(jsonl, _build_pass_jsonl_lines(str(script.resolve())))
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", WORKFLOW,
+        "--script-path", str(script.resolve()),
+        "--candidate-root", str(candidate_root.resolve()),
+        "--expected-status", "PASS",
+        "--out", str(out),
+        "--json",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = load_json(completed)
+    assert payload["scriptPath"] == str(script.resolve())
+    assert payload["scriptHash"].startswith("sha256:")
+    assert payload["candidateHash"].startswith("sha256:")
+    assert json.loads(out.read_text(encoding="utf-8"))["scriptPath"] == str(script.resolve())
+
+
+def test_evaluate_binds_expected_script_path_without_candidate_root(tmp_path: Path) -> None:
+    jsonl = tmp_path / "pass.jsonl"
+    write_jsonl(jsonl, _build_pass_jsonl_lines())
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", WORKFLOW,
+        "--script-path", SCRIPT_PATH,
+        "--expected-status", "PASS",
+        "--scenario-id", "product-pass",
+        "--json",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = load_json(completed)
+    assert payload["scriptPath"] == SCRIPT_PATH
+    assert payload["expectedStatus"] == "PASS"
+    assert "candidateHash" not in payload
+
+
+def test_evaluate_rejects_different_script_path(tmp_path: Path) -> None:
+    candidate_root = tmp_path / "candidate"
+    script = candidate_root / ".claude" / "workflows" / f"{WORKFLOW}.js"
+    script.parent.mkdir(parents=True)
+    script.write_text("return { status: 'PASS' }\n", encoding="utf-8")
+    jsonl = tmp_path / "pass.jsonl"
+    write_jsonl(jsonl, _build_pass_jsonl_lines())
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", WORKFLOW,
+        "--script-path", str(script.resolve()),
+        "--candidate-root", str(candidate_root.resolve()),
+        "--expected-status", "PASS",
+        "--json",
+    )
+
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["evidence"]["workflow_invoked"] is False
+    assert any("workflow_invoked" in issue for issue in payload["blockingIssues"])
 
 
 def test_evaluate_passes_with_required_agent_attribution(tmp_path: Path) -> None:
@@ -1204,6 +1277,31 @@ def test_evaluate_does_not_false_positive_on_user_text(tmp_path: Path) -> None:
     assert payload["evidence"]["async_launched"] is False, "user text must not trigger async_launched"
     assert payload["evidence"]["completed_pass"] is False, "user text PASS must not trigger completed_pass"
     assert payload["evidence"]["environment_disabled"] is True
+
+
+def test_evaluate_skill_listing_content_requires_exact_workflow_name(tmp_path: Path) -> None:
+    """Structured skill listing content must not match workflow names as substrings."""
+    jsonl = tmp_path / "skill-listing-substring.jsonl"
+    write_jsonl(
+        jsonl,
+        [
+            {
+                "type": "skill_listing",
+                "content": "development workflow catalog includes skill_listing metadata",
+            },
+        ],
+    )
+
+    completed = run_script(
+        "evaluate",
+        "--jsonl", str(jsonl),
+        "--workflow", "develop",
+        "--expected-status", "PASS",
+        "--json",
+    )
+
+    payload = load_json(completed)
+    assert payload["evidence"]["skill_listing"] is False
 
 
 def test_evaluate_structured_completion_from_queue_operation(tmp_path: Path) -> None:

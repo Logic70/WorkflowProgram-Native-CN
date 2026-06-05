@@ -16,5 +16,6 @@
     }
   ],
   "body": "phase('Intake')\n\nconst candidates = [\n  { id: 'sample-a', summary: 'Read-only migration probe A' },\n  { id: 'sample-b', summary: 'Read-only migration probe B' },\n]\n\nphase('Review')\n\nconst reviewed = await pipeline(\n  candidates,\n  async (candidate) => {\n    const votes = await parallel(\n      ['correctness', 'boundary'].map(lens => () =>\n        agent(\n          `Review ${candidate.id} through the ${lens} lens. This is read-only. Do not use tools or write files. Return PASS and a short reason.`,\n          {\n            label: `sample:${candidate.id}:${lens}`,\n            schema: {\n              type: 'object',\n              properties: {\n                status: { type: 'string', enum: ['PASS'] },\n                reason: { type: 'string' },\n              },\n              required: ['status', 'reason'],\n              additionalProperties: false,\n            },\n          },\n        )\n      ),\n    )\n    return { candidate, votes }\n  },\n)\n\nphase('Decide')\n\nconst blocked = reviewed.filter(item => item.votes.some(vote => vote.status !== 'PASS'))\nif (blocked.length > 0) {\n  return {\n    status: 'BLOCKED_REVIEW',\n    workflow: 'workflowprogram-native-sample-migration',\n    blockingIssues: blocked,\n  }\n}\n\nreturn {\n  status: 'PASS',\n  workflow: 'workflowprogram-native-sample-migration',\n  blockingIssues: [],\n  reviewed,\n}\n",
-  "supporting_assets": []
+  "supporting_assets": [],
+  "asset_disposition": []
 }

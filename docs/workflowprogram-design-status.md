@@ -53,7 +53,7 @@ M15 product-handoff narrowing 已完成：
 - generator/handoff/develop JS 与 legacy retirement 评估器聚焦回归共 172 项单元测试通过。
 - Computer Use 终端驱动仍 deferred。
 
-M16 已关闭两个可确定性关闭的 legacy retirement blocker：`.workflowprogram/evidence/legacy-retirement-anchor.json` 提供 rollback/deprecation anchor；`route-native-control-plane.py` 不再把旧 runtime 标记自动路由回旧主链，而是返回 Native 路由和 `manual_migration_required`。新增 `build-native-product-smoke-evidence.py` 聚合真实 evaluator 报告；当前仍不会伪造完整 product smoke，因此唯一活跃 blocker 是完整产品交互式 smoke 未声明完成。
+M16 已关闭两个可确定性关闭的 legacy retirement blocker：`.workflowprogram/evidence/legacy-retirement-anchor.json` 提供 rollback/deprecation anchor；`route-native-control-plane.py` 不再把旧 runtime 标记自动路由回旧主链，而是返回 Native 路由和 `manual_migration_required`。新增 `build-native-product-smoke-evidence.py` 聚合真实 evaluator 报告；P20 后聚合器还要求 `return_code=0`、空 blockers、绝对且与 workflow 匹配的 `scriptPath`、非空 scenario、run ID、异步启动和 profile 对应证据。Native develop apply evidence 同时绑定显式 `targetRoot`、持久化 managed result、目标 manifest 和目标文件当前 hash。当前仍不会伪造完整 product smoke，因此唯一活跃 blocker 是完整产品交互式 smoke 未声明完成。
 
 ## 历史追溯文档
 

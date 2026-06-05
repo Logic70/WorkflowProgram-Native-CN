@@ -45,15 +45,18 @@ def load_json(completed: subprocess.CompletedProcess[str]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def test_assessor_returns_ready_retirement_on_current_repo() -> None:
-    """The current WorkflowProgram repository has closed the known retirement blockers."""
+def test_assessor_returns_blocked_retirement_on_current_repo() -> None:
+    """The current repository keeps legacy retirement blocked until product smoke is complete."""
     completed = run_assessor(ROOT)
     payload = load_json(completed)
 
-    assert completed.returncode == 0
-    assert payload["status"] == "READY_FOR_RETIREMENT"
+    assert completed.returncode == 1
+    assert payload["status"] == "BLOCKED_RETIREMENT"
     assert payload["schema_version"] == 1
     assert payload["schema_name"] == SCHEMA_NAME
+    assert {issue["id"] for issue in payload["blockingIssues"]} == {
+        "full-product-interactive-smoke-not-declared-complete",
+    }
 
 
 def test_assessor_readable_summary() -> None:
@@ -65,7 +68,8 @@ def test_assessor_readable_summary() -> None:
         text=True,
         check=False,
     )
-    assert "status=READY_FOR_RETIREMENT" in completed.stdout
+    assert "status=BLOCKED_RETIREMENT" in completed.stdout
+    assert "full-product-interactive-smoke-not-declared-complete" in completed.stdout
     assert "summary:" in completed.stdout
 
 
@@ -174,13 +178,13 @@ def test_target_runtime_directory_is_inventoried_as_existing(tmp_path: Path) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_current_repo_has_no_active_blockers() -> None:
-    """The current repo must have no active retirement blockers."""
+def test_current_repo_has_only_product_smoke_blocker() -> None:
+    """The current repo must not close retirement before real product smoke evidence."""
     completed = run_assessor(ROOT)
     payload = load_json(completed)
 
     blocker_ids = {b["id"] for b in payload["blockingIssues"]}
-    assert blocker_ids == set()
+    assert blocker_ids == {"full-product-interactive-smoke-not-declared-complete"}
 
 
 def test_every_active_blocker_is_declared_by_a_stable_rule() -> None:
@@ -318,7 +322,10 @@ def test_report_writes_to_disk(tmp_path: Path) -> None:
     )
     assert out_path.exists()
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert payload["status"] == "READY_FOR_RETIREMENT"
+    assert payload["status"] == "BLOCKED_RETIREMENT"
+    assert {issue["id"] for issue in payload["blockingIssues"]} == {
+        "full-product-interactive-smoke-not-declared-complete",
+    }
     assert payload["schema_name"] == SCHEMA_NAME
 
 

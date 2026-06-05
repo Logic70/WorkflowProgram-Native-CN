@@ -38,11 +38,71 @@ FORBIDDEN_APIS = {
     "fs": re.compile(r"(?:\bfrom\s+['\"]fs['\"]|\brequire\s*\(\s*['\"]fs['\"]|\bfs\.)"),
     "require()": re.compile(r"\brequire\s*\("),
     "process": re.compile(r"\bprocess\b"),
+    "eval()": re.compile(r"\beval\b"),
+    "Function()": re.compile(r"\bFunction\b"),
     "Date.now()": re.compile(r"\bDate\.now\s*\("),
     "Math.random()": re.compile(r"\bMath\.random\s*\("),
     "new Date()": re.compile(r"\bnew\s+Date\s*\(\s*\)"),
 }
 META_LITERAL_KEYS = {"name", "description", "phases", "title", "detail"}
+
+# Claude Code native tool names that authors sometimes mistakenly call as
+# Workflow JS globals.  These are NOT part of the Native Workflow JS runtime
+# and any direct reference in executable code is an error.
+UNDECLARED_NATIVE_TOOL_NAMES = [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Grep",
+    "Glob",
+    "PowerShell",
+    "WebSearch",
+    "WebFetch",
+    "ToolSearch",
+    "NotebookEdit",
+    "AskUserQuestion",
+    "Skill",
+    "Task",
+    "SendMessage",
+    "Agent",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "EnterWorktree",
+    "ExitWorktree",
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskOutput",
+    "TaskStop",
+    "TaskUpdate",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "ScheduleWakeup",
+    "Workflow",
+    "Monitor",
+    "TeamCreate",
+    "TeamDelete",
+    "PushNotification",
+]
+# Build per-name patterns that match direct identifier references. Property
+# access and object keys are filtered later, while calls and bare references
+# remain errors unless the identifier is visibly declared locally.
+UNDECLARED_NATIVE_TOOL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    (name, re.compile(rf"\b{re.escape(name)}\b"))
+    for name in UNDECLARED_NATIVE_TOOL_NAMES
+]
+
+# High-confidence runtime identifiers whose accidental omission has caused
+# real launch failures. This is intentionally not a complete JavaScript linter.
+CRITICAL_RUNTIME_IDENTIFIERS = {"runId"}
+IDENTIFIER_PATTERN = re.compile(r"\b[A-Za-z_$][\w$]*\b")
+DECLARATION_PATTERN = re.compile(r"\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)")
+DESTRUCTURED_DECLARATION_PATTERN = re.compile(r"\b(?:const|let|var)\s*\{([^}]*)\}")
+FUNCTION_PARAMS_PATTERN = re.compile(r"\bfunction\s*[A-Za-z_$]*\s*\(([^)]*)\)")
+PAREN_ARROW_PARAMS_PATTERN = re.compile(r"\(([^)]*)\)\s*=>")
+SINGLE_ARROW_PARAM_PATTERN = re.compile(r"\b([A-Za-z_$][\w$]*)\s*=>")
 
 
 def error(rule: str, message: str) -> dict[str, str]:
@@ -227,7 +287,7 @@ def phase_titles(pattern: re.Pattern[str], text: str) -> list[str]:
 def validate_forbidden_apis(text: str, errors: list[dict[str, str]]) -> None:
     """Reject unsupported or nondeterministic APIs."""
 
-    executable_text = strip_string_literals(text)
+    executable_text = strip_comments(strip_string_literals(text))
     for name, pattern in FORBIDDEN_APIS.items():
         if pattern.search(executable_text):
             errors.append(error("FORBIDDEN_API", f"Native Workflow JS must not use `{name}`."))
@@ -341,6 +401,84 @@ def validate_pipeline_shapes(text: str, errors: list[dict[str, str]]) -> None:
             errors.append(error("PIPELINE_SHAPE_INVALID", "`pipeline()` must start with items, not a stage function or Agent call."))
 
 
+def declared_identifiers(text: str) -> set[str]:
+    """Collect simple declarations for conservative undeclared-name checks."""
+
+    executable_text = strip_comments(strip_string_literals(text))
+    declared = {match.group(1) for match in DECLARATION_PATTERN.finditer(executable_text)}
+
+    for match in DESTRUCTURED_DECLARATION_PATTERN.finditer(executable_text):
+        for item in match.group(1).split(","):
+            candidate = item.strip()
+            if not candidate:
+                continue
+            if ":" in candidate:
+                candidate = candidate.split(":", 1)[1].strip()
+            candidate = candidate.split("=", 1)[0].strip()
+            if IDENTIFIER_PATTERN.fullmatch(candidate):
+                declared.add(candidate)
+
+    for pattern in (FUNCTION_PARAMS_PATTERN, PAREN_ARROW_PARAMS_PATTERN):
+        for match in pattern.finditer(executable_text):
+            for item in match.group(1).split(","):
+                candidate = item.strip().split("=", 1)[0].strip()
+                if IDENTIFIER_PATTERN.fullmatch(candidate):
+                    declared.add(candidate)
+
+    declared.update(match.group(1) for match in SINGLE_ARROW_PARAM_PATTERN.finditer(executable_text))
+    return declared
+
+
+def is_property_access_or_key(text: str, match: re.Match[str]) -> bool:
+    """Return true when an identifier is a member access or object key."""
+
+    before = text[: match.start()].rstrip()
+    after = text[match.end() :].lstrip()
+    return before.endswith(".") or after.startswith(":")
+
+
+def validate_undeclared_native_api(text: str, errors: list[dict[str, str]]) -> None:
+    """Reject Claude Code tool names referenced as Native Workflow JS globals.
+
+    Direct calls and bare references fail because host tools are not injected
+    into the workflow runtime. Property access and object keys remain allowed.
+    """
+
+    executable_text = strip_comments(strip_string_literals(text))
+    declared = declared_identifiers(text)
+    for name, pattern in UNDECLARED_NATIVE_TOOL_PATTERNS:
+        if name in declared:
+            continue
+        for match in pattern.finditer(executable_text):
+            if is_property_access_or_key(executable_text, match):
+                continue
+            errors.append(
+                error(
+                    "UNDECLARED_NATIVE_API",
+                    f"`{name}` is a Claude Code host tool, not a Native Workflow JS global. Use agent() to delegate tool work.",
+                )
+            )
+            break
+
+
+def validate_undeclared_identifiers(text: str, errors: list[dict[str, str]]) -> None:
+    """Reject high-confidence undeclared runtime identifiers without pretending to lint all JS."""
+
+    executable_text = strip_comments(strip_string_literals(text))
+    declared = declared_identifiers(text)
+    for identifier in sorted(CRITICAL_RUNTIME_IDENTIFIERS - declared):
+        for match in re.finditer(rf"\b{re.escape(identifier)}\b", executable_text):
+            if is_property_access_or_key(executable_text, match):
+                continue
+            errors.append(
+                error(
+                    "UNDECLARED_IDENTIFIER",
+                    f"`{identifier}` is referenced but not visibly declared. Declare it from `args` or remove the reference.",
+                )
+            )
+            break
+
+
 def validate_parallel_writes(text: str, errors: list[dict[str, str]]) -> None:
     """Flag obvious same-directory write prompts inside one parallel call."""
 
@@ -386,8 +524,8 @@ def validate_script(path: Path) -> dict[str, Any]:
     meta_literal, meta = extract_meta(text, errors)
     validate_meta_export_count(text, errors)
     validate_module_parse(text, errors)
-    declared_phases = phase_titles(TITLE_PATTERN, meta_literal or "")
-    actual_phases = phase_titles(PHASE_CALL_PATTERN, text)
+    declared_phases = phase_titles(TITLE_PATTERN, strip_comments(meta_literal or ""))
+    actual_phases = phase_titles(PHASE_CALL_PATTERN, strip_comments(text))
     if meta_literal is not None and declared_phases != actual_phases:
         errors.append(
             error(
@@ -397,6 +535,8 @@ def validate_script(path: Path) -> dict[str, Any]:
         )
 
     validate_forbidden_apis(text, errors)
+    validate_undeclared_native_api(text, errors)
+    validate_undeclared_identifiers(text, errors)
     validate_gate_schemas(text, errors)
     validate_pipeline_shapes(text, errors)
     validate_parallel_writes(text, errors)

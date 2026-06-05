@@ -201,7 +201,7 @@ export const meta = {
 
 约束：
 
-- `meta.phases[*].title` 与 `phase(title)` 对齐。
+- `meta.phases[*].title` 与源文件中的 `phase(title)` 调用名称集合对齐；`PHASE_ALIGNMENT` 不要求 re-entrant 的每条提前返回路径都执行全部 phase。
 - 被 gate 消费的 Agent 字段必须在 schema 中声明。
 - 并行 Agent 默认不写相同目录。
 - 文件末尾返回稳定 envelope。
@@ -351,7 +351,7 @@ Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D9 使�
 | D8 Smoke | `READY_FOR_SMOKE` | 通过宿主侧 Computer Use 或人工入口运行交互式 smoke | `smokeEvidence` |
 | D9 Apply | `READY_FOR_APPLY`，仅当 `applyApproved=true` | 执行 checksum、drift、idempotency 和 managed apply | `applyEvidence` |
 
-证据对象至少包含 `status`。generation PASS 必须包含非空 `candidateRefs`、非空 `candidateHash` 和非空 `evidence` 数组。validation、smoke 和 apply PASS 必须回传相同 `candidateHash`，防止旧证据误用于新候选；apply PASS 还必须包含 `applyManifest`。外部步骤失败时，前台携带 `status != PASS` 和 `blockingIssues` 重新调用，JS 返回对应 `BLOCKED_*`。`applyApproved=false` 时 D8 不执行写入，直接以 `deliveryMode=candidate-only` 交付候选。
+证据对象至少包含 `status`。generation PASS 必须包含非空 `candidateRefs`、`sha256:` 形式的 `candidateHash` 和非空 `evidence` 数组。validation、smoke 和 apply PASS 必须回传相同 `candidateHash`，防止旧证据误用于新候选；apply PASS 还必须包含与本次 `targetRoot` 一致的 `targetRoot` 和结构化 `applyManifest`。外部步骤失败时，前台携带 `status != PASS` 和 `blockingIssues` 重新调用，JS 返回对应 `BLOCKED_*`。`applyApproved=false` 时 D8 不执行写入，直接以 `deliveryMode=candidate-only` 交付候选。
 
 其他产品 workflow 使用共同最小 args：
 
@@ -781,3 +781,79 @@ M1-M7 原型 generator 仍会在 `RUN_ROOT/outputs/stages/` 写入：
 - `native-workflow-validation.json`
 
 它们用于兼容当前 capability matrix 和原型证据链。产品级 Native JS 切换时可以保留等价报告，但不得把原型 JSON authoring spec 恢复为默认语义真源。
+
+## 20. Native Develop 证据与迁移资产收敛契约
+
+### 20.1 静态校验
+
+`validate-native-workflow-js.py` 在 module parse 之外增加两类高置信度规则：
+
+- `UNDECLARED_NATIVE_API`：拒绝未声明的宿主工具直接调用或裸引用，例如 `Bash()`、`const tool = Bash`；字符串、对象属性、对象键和本地合法声明不触发。
+- `UNDECLARED_IDENTIFIER`：拒绝已知关键运行时标识符的裸引用，例如使用 `runId` 但没有可见声明。该规则是保守检查，不是完整 lint。
+- `FORBIDDEN_API`：拒绝 `eval()` 和 `Function()` 等会隐藏静态规则的动态代码执行。
+
+### 20.2 Smoke Evidence
+
+`build-native-develop-evidence.py smoke` 只接受 `build-native-interactive-smoke.py evaluate` 的 PASS 报告。规范化后的 `smokeEvidence.smokeReports[]` 至少包含：
+
+| Field | Contract |
+|---|---|
+| `reportPath` / `reportHash` | evaluator 报告绝对路径与 SHA-256 |
+| `workflow` / `runIds` | 非空 workflow 名称与实际异步 run ID |
+| `scriptPath` / `scriptHash` | 实际启动的 candidate workflow 绝对路径与脚本 SHA-256 |
+| `candidateHash` | evaluator 时重新计算的 candidate tree hash |
+| `scenarioId` | 非空场景标识，用于区分成功与阻断等多次 smoke |
+| `expectedStatus` | `PASS` 或 `BLOCKED` |
+| `evidence.workflow_invoked` | Workflow 工具实际被调用 |
+| `evidence.async_launched` | runtime 返回异步启动 |
+| `evidence.agent_started` | 至少一个 Agent 实际启动 |
+| `evidence.schema_result` | 至少一个结构化 Agent 结果 |
+| `evidence.completed_pass` / `completed_blocked` | 与 expectedStatus 对应的 completion |
+
+Develop 的 Smoke gate 还要求至少一个 `expectedStatus=PASS` 的报告，避免只验证阻断路径；同一报告不得同时声明 `completed_pass` 与 `completed_blocked`。`early-blocker` profile 只允许 `expectedStatus=BLOCKED`，不能用未进入 Agent/schema 阶段的报告证明成功路径。`build-native-interactive-smoke.py evaluate` 的 develop 主路径必须同时接收 `--script-path` 和 `--candidate-root`，并验证 JSONL 中的 Workflow 调用路径就是当前候选文件。
+
+### 20.2.1 Generation And Validation Evidence
+
+`build-native-develop-evidence.py generation|validation` 只接受：
+
+- `native-workflow-js-generation` PASS 报告，且 `candidate_script` 位于当前 candidate tree；
+- `native-workflow-js-validation` PASS 报告，且 `script` 位于当前 candidate tree；
+- 两种报告指向同一个 `.claude/workflows/*.js` 主脚本，规范化后共同回传 `workflowScriptPath`；
+- 两种报告的 `errors` 都必须为空。
+
+任意手工 `{"status":"PASS"}` 对象、candidate tree 内的非 Workflow JS 或生成与验证指向不同脚本的组合不得进入 develop gate。
+
+### 20.3 Structured Apply Manifest
+
+`build-native-develop-evidence.py apply` 必须显式接收 `--target-root`，只接受 `managed-change-result` 或其中嵌套的 `managed_result`。它要求 result 的 `source_root` 与当前 candidate 一致、`target_root` 与请求目标一致、`manifest_path` 指向目标 `.workflowprogram/managed-files.json`，并读取 `RUN_ROOT/outputs/managed-change-result.json` 作为持久化事实。随后逐文件验证 candidate、apply report、manifest 与目标文件 hash 一致，然后输出：
+
+```json
+{
+  "targetRoot": "<absolute target root>",
+  "applyManifest": {
+    "manifestPath": "<absolute managed-files.json>",
+    "reportPath": "<absolute managed-change-result>",
+    "entries": [
+      { "path": ".claude/workflows/example.js", "action": "create", "sha256": "..." }
+    ]
+  }
+}
+```
+
+字符串路径、旁路 manifest、缺失或不一致的持久化 result、目标不匹配、空 manifest、未覆盖候选文件和 hash 不一致均返回 FAIL。
+
+### 20.4 Asset Disposition
+
+`supporting_assets` 只拥有候选树中的生成内容。`asset_disposition` 拥有 update/migrate 的资产处理决策：
+
+| Action | Meaning | Requires `supporting_asset_path` |
+|---|---|---|
+| `retain` | 保持现有资产不变 | 否 |
+| `generate` | 生成新资产 | 是 |
+| `update` | 生成替换资产 | 是 |
+| `archive` | 生成归档资产，原资产后续处理 | 是 |
+| `remove` | 后续删除动作 | 否 |
+| `defer` | 显式延后决策 | 否 |
+| `not-applicable` | 与本次迁移无关 | 否 |
+
+Update/migrate 的 `designEvidence.assetDisposition`、`reviewEvidence.assetDispositionReviewed` 与 `authoringSpec.asset_disposition` 必须闭合。当前 managed apply 只证明 create/update/noop；archive/remove 未有执行证据时不得宣称完成。

@@ -50,12 +50,14 @@ Schema does not prove external truth.
 | meta literal | script does not start with pure-literal `export const meta = {...}` |
 | required meta | missing `name` or `description` |
 | phase alignment | `meta.phases` and `phase()` visibly diverge |
-| forbidden API | `fs`, `require()`, `process`, `Date.now()`, `Math.random()`, or zero-argument `new Date()` |
+| forbidden API | `fs`, `require()`, `process`, dynamic code execution (`eval()` / `Function()`), `Date.now()`, `Math.random()`, or zero-argument `new Date()` |
+| unsupported host tool reference | direct calls or bare references to `Bash`, `Read`, `Write`, or other Claude Code host tools outside `agent()` |
+| high-confidence undeclared identifier | a critical runtime identifier such as `runId` is referenced without a visible declaration |
 | schema presence | gate-consumed Agent output has no schema |
 | parallel write hint | parallel prompts visibly write the same directory |
 | return envelope | no stable `status` or equivalent final result |
 
-Do not claim complete semantic validation.
+Do not claim complete semantic validation. The undeclared-identifier check is intentionally conservative and is not a replacement for a JavaScript linter.
 
 ## Smoke Contract
 
@@ -71,3 +73,26 @@ Minimum:
 Add blocked-path, parallel, pipeline, external-fact, resume, or publish smoke for higher-risk workflows.
 
 Record JSONL session evidence when proving Claude Code runtime behavior.
+
+The develop evidence adapter must accept only evaluator PASS reports produced by `build-native-interactive-smoke.py evaluate`. A smoke PASS report must prove Workflow invocation, asynchronous launch, Agent start, structured schema output, a non-empty run ID, and the expected completion status. It must also bind the actual invocation to the exact candidate `scriptPath`, `scriptHash`, `candidateHash`, and a non-empty scenario identifier. A raw JSONL path, arbitrary transcript, or same-name workflow launched from another path is not smoke evidence.
+
+Generation and validation evidence must likewise come from their real report schemas (`native-workflow-js-generation` and `native-workflow-js-validation`) and identify a script inside the current candidate tree. Do not normalize arbitrary `{"status":"PASS"}` objects.
+
+## Controlled Apply Contract
+
+`applyEvidence` is bound to the requested `targetRoot`, and `applyManifest` is a structured object, not a path string. It contains:
+
+- `manifestPath`: the actual target `.workflowprogram/managed-files.json`;
+- `reportPath`: the actual `managed-change-result` report;
+- `entries`: candidate paths with `create | update | noop` action and candidate SHA-256.
+
+The evidence adapter must require the explicit target root, verify that the managed result binds the same candidate source and target, load the persisted result from `RUN_ROOT/outputs/managed-change-result.json`, require the target `.workflowprogram/managed-files.json`, and verify every target file still matches the candidate hash before returning PASS.
+
+## Asset Disposition Contract
+
+Keep generated content and migration intent separate:
+
+- `supporting_assets` contains only files staged into the candidate tree;
+- `asset_disposition` records how existing or target assets are treated.
+
+For `update` and `migrate`, `asset_disposition` is required. Valid actions are `retain`, `generate`, `update`, `archive`, `remove`, `defer`, and `not-applicable`. `generate`, `update`, and `archive` must reference a matching `supporting_asset_path`. `archive` and `remove` remain explicit migration follow-up actions unless the controlled apply implementation proves that it executed them.

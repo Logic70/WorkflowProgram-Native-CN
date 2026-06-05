@@ -153,7 +153,8 @@ authoring spec 使用 JSON：
   "description": "Describe what the workflow does.",
   "phases": [{ "title": "Probe", "detail": "Return PASS." }],
   "body": "phase('Probe')\n\nreturn { status: 'PASS' }\n",
-  "supporting_assets": []
+  "supporting_assets": [],
+  "asset_disposition": []
 }
 ```
 
@@ -162,19 +163,19 @@ authoring spec 使用 JSON：
 ```bash
 python .claude/scripts/generate-native-workflow.py \
   --spec <authoring-spec.json> \
-  --readiness <confirmed-readiness.json> \
+  --generation-handoff <ready-for-generation-handoff.json> \
   --target-root <target-root> \
   --run-root <run-root> \
   --json
 ```
 
-M9 过渡期仍复用该 JSON renderer，但 JSON authoring spec 不是控制面真源。candidate 生成后，使用 `build-native-develop-evidence.py` 对 candidate tree 求稳定 hash，并规范化 generation、validation、smoke 和 apply evidence。用户批准后由 `managed-assets.py apply-staged` 负责受控写入、冲突保护、回滚清单和恢复说明。独立校验已有 JS 时执行：
+M15+M18 后，JSON renderer 只消费 `workflowprogram-develop.js` Author 阶段返回并经过 review 的 `authoringSpec`；JSON authoring spec 不是控制面真源。candidate 生成后，使用 `build-native-develop-evidence.py` 对 candidate tree 求稳定 hash，并规范化 generation、validation、smoke 和 apply evidence。用户批准后由 `managed-assets.py apply-staged` 负责受控写入、冲突保护、回滚清单和恢复说明；apply evidence 必须显式绑定 `targetRoot`，并校验持久化 managed result、目标 manifest 和目标文件当前 hash。独立校验已有 JS 时执行：
 
 ```bash
 python .claude/scripts/validate-native-workflow-js.py --script <workflow.js> --json
 ```
 
-`supporting_assets` 只在单文件 JS 不足时显式增加，可生成 reusable skill、Agent、领域脚本、thin compatibility command 或可选 authoring metadata。每个可选资产必须提供 `reason`，并受目标路径白名单约束。
+`supporting_assets` 只在单文件 JS 不足时显式增加，可生成 reusable skill、Agent、领域脚本、thin compatibility command 或可选 authoring metadata。每个可选资产必须提供 `reason`，并受目标路径白名单约束。`asset_disposition` 独立记录 update/migrate 时资产的 retain、generate、update、archive、remove、defer 或 not-applicable 决策；retain-only 迁移不需要伪造 supporting asset。
 
 插件产品 develop 控制面通过以下形式启动：
 
@@ -222,12 +223,16 @@ python .claude/scripts/build-native-interactive-smoke.py evaluate \
   --jsonl <session.jsonl> \
   --journal-jsonl <optional-journal.jsonl> \
   --workflow <workflow-name> \
+  --script-path <candidate-root>/.claude/workflows/<workflow-name>.js \
+  --candidate-root <candidate-root> \
   --expected-status PASS \
+  --scenario-id <scenario-id> \
   --evidence-profile full \
+  --out <smoke-evaluator-report.json> \
   --json
 ```
 
-`packet` 会生成包含 `ultrawork` 触发词的人工执行提示，但不会自行启动 Claude Code。`evaluate` 只读取真实 JSONL。当前支持 manual WSL login-shell execution + deterministic JSONL evaluation；Computer Use 终端驱动仍 deferred，等待允许的非终端集成。
+`packet` 会生成包含 `ultrawork` 触发词的人工执行提示，但不会自行启动 Claude Code。`evaluate` 只读取真实 JSONL；为 develop gate 生成报告时必须同时提供 candidate `scriptPath`、`candidate-root` 和非空 `scenario-id`，报告会绑定 `scriptHash` 与 `candidateHash`。当前支持 manual WSL login-shell execution + deterministic JSONL evaluation；Computer Use 终端驱动仍 deferred，等待允许的非终端集成。
 
 M12 增加 Native workflow manifest 和发布资格聚合器：
 

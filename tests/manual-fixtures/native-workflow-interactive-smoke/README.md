@@ -137,25 +137,29 @@ or the real-world `started`/`result` format — both are supported.
 
 ### Step 4: Evaluate Evidence
 
-```bash
-python .claude/scripts/build-native-interactive-smoke.py evaluate \
-  --jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>.jsonl" \
-  --journal-jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>\subagents\workflows\<run-id>\journal.jsonl" \
-  --workflow workflowprogram-native-smoke \
-  --expected-status PASS \
-  --scenario-id pass-smoke-001 \
-  --evidence-profile full \
+```powershell
+python .claude/scripts/build-native-interactive-smoke.py evaluate `
+  --jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>.jsonl" `
+  --journal-jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>\subagents\workflows\<run-id>\journal.jsonl" `
+  --workflow workflowprogram-native-smoke `
+  --script-path "D:\Code\WorkflowProgram-Native-CN\tests\manual-fixtures\native-workflow-smoke\target-root\.claude\workflows\workflowprogram-native-smoke.js" `
+  --candidate-root "D:\Code\WorkflowProgram-Native-CN\tests\manual-fixtures\native-workflow-smoke\target-root" `
+  --expected-status PASS `
+  --scenario-id pass-smoke-001 `
+  --evidence-profile full `
   --json
 ```
 
 For early-blocker scenarios:
-```bash
-python .claude/scripts/build-native-interactive-smoke.py evaluate \
-  --jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>.jsonl" \
-  --workflow workflowprogram-native-smoke \
-  --expected-status BLOCKED \
-  --scenario-id early-blocker-001 \
-  --evidence-profile early-blocker \
+```powershell
+python .claude/scripts/build-native-interactive-smoke.py evaluate `
+  --jsonl "\\wsl.localhost\Ubuntu-22.04\home\zhde\.claude\projects\<project-hash>\<session-id>.jsonl" `
+  --workflow workflowprogram-native-smoke `
+  --script-path "D:\Code\WorkflowProgram-Native-CN\tests\manual-fixtures\native-workflow-smoke\target-root\.claude\workflows\workflowprogram-native-smoke.js" `
+  --candidate-root "D:\Code\WorkflowProgram-Native-CN\tests\manual-fixtures\native-workflow-smoke\target-root" `
+  --expected-status BLOCKED `
+  --scenario-id early-blocker-001 `
+  --evidence-profile early-blocker `
   --json
 ```
 

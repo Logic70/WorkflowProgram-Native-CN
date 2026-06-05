@@ -133,6 +133,7 @@ def pass_design_evidence() -> dict:
         "highLevelDesign": "Use one Native JS control plane.",
         "lowLevelDesign": "Return structured handoffs for external effects.",
         "traceability": ["REQ-001 -> Validate -> smoke evidence"],
+        "assetDisposition": [],
         "blockingIssues": [],
     }
 
@@ -143,6 +144,7 @@ def pass_review_evidence() -> dict:
         "blockingIssues": [],
         "requiredRevisions": [],
         "summary": "Design review is closed.",
+        "assetDispositionReviewed": True,
     }
 
 
@@ -159,6 +161,7 @@ def pass_generation_evidence() -> dict:
         "status": "PASS",
         "candidateHash": "sha256:probe",
         "candidateRefs": ["/tmp/native-run/outputs/candidate/.claude/workflows/probe.js"],
+        "workflowScriptPath": "/tmp/native-run/outputs/candidate/.claude/workflows/probe.js",
         "evidence": ["/tmp/native-run/outputs/stages/native-workflow-generation.json"],
         "blockingIssues": [],
     }
@@ -168,6 +171,7 @@ def pass_validation_evidence() -> dict:
     return {
         "status": "PASS",
         "candidateHash": "sha256:probe",
+        "workflowScriptPath": "/tmp/native-run/outputs/candidate/.claude/workflows/probe.js",
         "evidence": ["/tmp/native-run/outputs/stages/native-workflow-validation.json"],
         "blockingIssues": [],
     }
@@ -178,6 +182,27 @@ def pass_smoke_evidence() -> dict:
         "status": "PASS",
         "candidateHash": "sha256:probe",
         "evidence": ["/tmp/native-run/outputs/stages/native-workflow-smoke.json"],
+        "smokeReports": [
+            {
+                "reportPath": "/tmp/native-run/outputs/stages/native-workflow-smoke.json",
+                "reportHash": "sha256:smoke",
+                "workflow": "probe",
+                "scriptPath": "/tmp/native-run/outputs/candidate/.claude/workflows/probe.js",
+                "scriptHash": "sha256:script",
+                "candidateHash": "sha256:probe",
+                "scenarioId": "pass-smoke-001",
+                "expectedStatus": "PASS",
+                "evidenceProfile": "full",
+                "runIds": ["wf_probe"],
+                "evidence": {
+                    "workflow_invoked": True,
+                    "async_launched": True,
+                    "agent_started": True,
+                    "schema_result": True,
+                    "completed_pass": True,
+                },
+            }
+        ],
         "blockingIssues": [],
     }
 
@@ -186,7 +211,18 @@ def pass_apply_evidence() -> dict:
     return {
         "status": "PASS",
         "candidateHash": "sha256:probe",
-        "applyManifest": "/tmp/native-run/outputs/stages/native-workflow-apply-manifest.json",
+        "targetRoot": "/tmp/native-target",
+        "applyManifest": {
+            "manifestPath": "/tmp/native-target/.workflowprogram/managed-files.json",
+            "reportPath": "/tmp/native-run/outputs/managed-change-result.json",
+            "entries": [
+                {
+                    "path": ".claude/workflows/probe.js",
+                    "action": "create",
+                    "sha256": "sha256:abc123",
+                }
+            ],
+        },
         "evidence": ["/tmp/native-run/outputs/stages/native-workflow-apply.json"],
         "blockingIssues": [],
     }
@@ -255,6 +291,8 @@ def test_validator_accepts_valid_minimal_fixture() -> None:
         ("invalid-gate-without-schema.js", "SCHEMA_REQUIRED_FOR_GATE"),
         ("invalid-parallel-write.js", "PARALLEL_WRITE_HINT"),
         ("invalid-return-envelope.js", "RETURN_ENVELOPE_REQUIRED"),
+        ("invalid-undeclared-api.js", "UNDECLARED_NATIVE_API"),
+        ("invalid-undeclared-identifier.js", "UNDECLARED_IDENTIFIER"),
     ],
 )
 def test_validator_rejects_invalid_fixture(fixture: str, rule: str) -> None:
@@ -276,7 +314,7 @@ def test_validator_allows_forbidden_api_words_inside_prompt_strings(tmp_path: Pa
 
 phase('Probe')
 await agent({ prompt: 'Review this process and require() documentation.' })
-return { status: 'PASS' }
+return { status: 'PASS', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -297,7 +335,7 @@ def test_validator_allows_forbidden_api_words_inside_template_prompt(tmp_path: P
 const context = 'docs'
 phase('Probe')
 await agent(`Review this ${context} and mention require() only as text.`)
-return { status: 'PASS' }
+return { status: 'PASS', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -317,7 +355,7 @@ def test_validator_rejects_forbidden_api_inside_template_expression(tmp_path: Pa
 
 const unsafe = `${require('fs')}`
 phase('Probe')
-return { status: unsafe ? 'PASS' : 'BLOCKED' }
+return { status: unsafe ? 'PASS' : 'BLOCKED', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -344,7 +382,7 @@ export const meta = {
 }
 
 phase('Probe')
-return { status: 'PASS' }
+return { status: 'PASS', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -370,7 +408,7 @@ function probe() {
 }
 
 phase('Probe')
-return { status: 'PASS' }
+return { status: 'PASS', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -392,7 +430,7 @@ def test_validator_rejects_pipeline_without_items_argument(tmp_path: Path) -> No
 
 phase('Probe')
 await pipeline(async item => item)
-return { status: 'PASS' }
+return { status: 'PASS', runId: args?.runId || '' }
 """,
         encoding="utf-8",
     )
@@ -403,12 +441,283 @@ return { status: 'PASS' }
     assert "PIPELINE_SHAPE_INVALID" in {item["rule"] for item in payload["errors"]}
 
 
+def test_validator_allows_declared_run_id(tmp_path: Path) -> None:
+    """A visibly declared runId may be used in a return envelope."""
+    script = tmp_path / "declared-runid.js"
+    script.write_text(
+        """export const meta = {
+  name: 'declared-runid',
+  description: 'runId is declared from args before use.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const runId = args?.runId || 'run-001'
+return { status: 'PASS', runId }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_run_id_property_key_without_local_declaration(tmp_path: Path) -> None:
+    """Object keys and args member access are not bare identifier references."""
+    script = tmp_path / "runid-property.js"
+    script.write_text(
+        """export const meta = {
+  name: 'runid-property',
+  description: 'runId is only an object key and args member.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+return { status: 'PASS', runId: args?.runId || '' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_undeclared_api_in_comment(tmp_path: Path) -> None:
+    """Undeclared tool names appearing only in comments must not be flagged."""
+    script = tmp_path / "comment-mention.js"
+    script.write_text(
+        """export const meta = {
+  name: 'comment-mention',
+  description: 'Undeclared tool names in comments are safe.',
+  phases: [{ title: 'Probe' }],
+}
+
+// TODO: consider using Bash or Read in agent prompts, not directly
+phase('Probe')
+return { status: 'PASS', runId: args?.runId || '' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_undeclared_api_as_property_access(tmp_path: Path) -> None:
+    """obj.Bash property access (not a call) must not trigger UNDECLARED_NATIVE_API."""
+    script = tmp_path / "prop-access.js"
+    script.write_text(
+        """export const meta = {
+  name: 'prop-access',
+  description: 'Property access to tool names is not a direct call.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const toolNames = { Bash: true, Read: false }
+const hasBash = toolNames.Bash
+return { status: hasBash ? 'PASS' : 'BLOCKED' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_undeclared_api_call_after_object_access(tmp_path: Path) -> None:
+    """A locally declared object method is not a direct host tool call."""
+    script = tmp_path / "obj-call.js"
+    script.write_text(
+        """export const meta = {
+  name: 'obj-call',
+  description: 'obj.Bash() is still a Bash() call pattern.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const obj = { Bash: () => 'PASS' }
+const result = obj.Bash()
+return { status: result }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_locally_declared_bash_function(tmp_path: Path) -> None:
+    """A local declaration named Bash must not be mistaken for a host tool."""
+    script = tmp_path / "local-bash.js"
+    script.write_text(
+        """export const meta = {
+  name: 'local-bash',
+  description: 'Bash is a local helper in this contrived fixture.',
+  phases: [{ title: 'Probe' }],
+}
+
+const Bash = value => value
+phase('Probe')
+return { status: Bash('PASS') }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "EnterWorktree",
+        "ExitWorktree",
+        "TaskCreate",
+        "TaskGet",
+        "TaskList",
+        "TaskOutput",
+        "TaskStop",
+        "TaskUpdate",
+    ],
+)
+def test_validator_rejects_additional_host_tool_calls(tmp_path: Path, tool_name: str) -> None:
+    """All known Claude Code host tools must fail when called as JS globals."""
+
+    script = tmp_path / f"{tool_name}.js"
+    script.write_text(
+        f"""export const meta = {{
+  name: 'invalid-{tool_name.lower()}',
+  description: 'Host tools are not Native Workflow JS globals.',
+  phases: [{{ title: 'Probe' }}],
+}}
+
+phase('Probe')
+{tool_name}({{}})
+return {{ status: 'PASS' }}
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "UNDECLARED_NATIVE_API" in {item["rule"] for item in payload["errors"]}
+
+
+def test_validator_rejects_bare_host_tool_reference(tmp_path: Path) -> None:
+    """A bare host tool identifier is also an undeclared runtime reference."""
+
+    script = tmp_path / "bare-host-tool.js"
+    script.write_text(
+        """export const meta = {
+  name: 'bare-host-tool',
+  description: 'Bare host tool references are invalid.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const tool = Bash
+return { status: tool ? 'PASS' : 'BLOCKED' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "UNDECLARED_NATIVE_API" in {item["rule"] for item in payload["errors"]}
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "eval('Bash(\"pwd\")')",
+        "new Function('Bash(\"pwd\")')()",
+        "const indirectEval = eval\nindirectEval('Bash(\"pwd\")')",
+        "const DynamicFunction = Function\nDynamicFunction('Bash(\"pwd\")')()",
+    ],
+)
+def test_validator_rejects_dynamic_code_execution(tmp_path: Path, expression: str) -> None:
+    """Dynamic code execution can hide unsupported runtime APIs."""
+
+    script = tmp_path / "dynamic-code.js"
+    script.write_text(
+        f"""export const meta = {{
+  name: 'invalid-eval',
+  description: 'Dynamic evaluation is not allowed.',
+  phases: [{{ title: 'Probe' }}],
+}}
+
+phase('Probe')
+{expression}
+return {{ status: 'PASS' }}
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert "FORBIDDEN_API" in {item["rule"] for item in payload["errors"]}
+
+
+def test_validator_allows_forbidden_api_names_in_comments(tmp_path: Path) -> None:
+    """Documentation comments must not be treated as executable dynamic code."""
+
+    script = tmp_path / "commented-dynamic-code.js"
+    script.write_text(
+        """export const meta = {
+  name: 'commented-dynamic-code',
+  description: 'Comments may explain rejected APIs.',
+  phases: [{ title: 'Probe' }],
+}
+
+// Do not use eval() or Function() in Native Workflow JS.
+phase('Probe')
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+
+    assert completed.returncode == 0
+
+
+def test_validator_ignores_phase_calls_in_comments(tmp_path: Path) -> None:
+    """Phase alignment must ignore commented phase-call examples in body text."""
+
+    script = tmp_path / "phase-comments.js"
+    script.write_text(
+        """export const meta = {
+  name: 'phase-comments',
+  description: 'Comments may include example phase names.',
+  phases: [{ title: 'Probe' }],
+}
+
+// phase('BodyComment')
+phase('Probe')
+return { status: 'PASS' }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+
+    assert completed.returncode == 0
+
+
 def authoring_spec_payload(
     *,
     name: str = "generated-probe",
     description: str = "Generate a minimal native workflow probe.",
     body: str = "phase('Probe')\n\nreturn { status: 'PASS' }\n",
     supporting_assets: list[dict[str, str]] | None = None,
+    asset_disposition: list[dict[str, str]] | None = None,
     task_model_policy: dict | None = None,
 ) -> dict:
     payload = {
@@ -417,6 +726,7 @@ def authoring_spec_payload(
         "phases": [{"title": "Probe", "detail": "Return PASS."}],
         "body": body,
         "supporting_assets": supporting_assets or [],
+        "asset_disposition": asset_disposition or [],
     }
     if task_model_policy is not None:
         payload["task_model_policy"] = task_model_policy
@@ -430,6 +740,7 @@ def write_authoring_spec(
     description: str = "Generate a minimal native workflow probe.",
     body: str = "phase('Probe')\n\nreturn { status: 'PASS' }\n",
     supporting_assets: list[dict[str, str]] | None = None,
+    asset_disposition: list[dict[str, str]] | None = None,
     task_model_policy: dict | None = None,
 ) -> None:
     payload = authoring_spec_payload(
@@ -437,6 +748,7 @@ def write_authoring_spec(
         description=description,
         body=body,
         supporting_assets=supporting_assets,
+        asset_disposition=asset_disposition,
         task_model_policy=task_model_policy,
     )
     path.write_text(
@@ -532,8 +844,8 @@ def test_generator_injects_task_model_control_plane_for_target_workflow(tmp_path
             "    additionalProperties: false,\n"
             "  },\n"
             "})\n"
-            "if (result.status !== 'PASS') return { status: 'BLOCKED' }\n"
-            "return { status: 'PASS' }\n"
+            "if (result.status !== 'PASS') return { status: 'BLOCKED', runId: args?.runId || '' }\n"
+            "return { status: 'PASS', runId: args?.runId || '' }\n"
         ),
         task_model_policy={
             "agent_task_models": {
@@ -574,7 +886,7 @@ def test_generated_target_workflow_omits_model_for_inherit_and_missing_mapping(t
             "phase('Probe')\n"
             "const first = await agent('Return PASS.', { label: 'generated-probe:first', schema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'], additionalProperties: false } })\n"
             "const second = await agent('Return PASS.', { label: 'generated-probe:second', schema: { type: 'object', properties: { status: { type: 'string' } }, required: ['status'], additionalProperties: false } })\n"
-            "return { status: first.status === 'PASS' && second.status === 'PASS' ? 'PASS' : 'BLOCKED' }\n"
+            "return { status: first.status === 'PASS' && second.status === 'PASS' ? 'PASS' : 'BLOCKED', runId: args?.runId || '' }\n"
         ),
         task_model_policy={
             "agent_task_models": {
@@ -656,7 +968,7 @@ def test_generator_does_not_apply_static_validation_failure(tmp_path: Path) -> N
     target = tmp_path / "target"
     run_root = tmp_path / "run"
     target.mkdir()
-    write_authoring_spec(spec, body="phase('Wrong')\n\nreturn { status: 'PASS' }\n")
+    write_authoring_spec(spec, body="phase('Wrong')\n\nreturn { status: 'PASS', runId: args?.runId || '' }\n")
 
     completed = run_generator(spec, target, run_root, "--apply", "--json")
     assert completed.returncode == 1
@@ -680,7 +992,7 @@ def test_generator_rejects_full_js_body_with_meta_header(tmp_path: Path) -> None
             "  phases: [{ title: 'Probe' }],\n"
             "}\n\n"
             "phase('Probe')\n"
-            "return { status: 'PASS' }\n"
+            "return { status: 'PASS', runId: args?.runId || '' }\n"
         ),
     )
 
@@ -703,7 +1015,7 @@ def test_generator_rejects_require_inside_template_expression_body(tmp_path: Pat
         body=(
             "phase('Probe')\n"
             "const unsafe = `${require('fs')}`\n"
-            "return { status: unsafe ? 'PASS' : 'BLOCKED' }\n"
+            "return { status: unsafe ? 'PASS' : 'BLOCKED', runId: args?.runId || '' }\n"
         ),
     )
 
@@ -810,6 +1122,43 @@ def test_generator_rejects_invalid_optional_supporting_assets(tmp_path: Path, su
     assert not (target / ".claude").exists()
 
 
+def test_generator_rejects_invalid_asset_disposition(tmp_path: Path) -> None:
+    """asset_disposition with an unknown action must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(
+        spec,
+        asset_disposition=[
+            {
+                "path": ".claude/scripts/probe.py",
+                "reason": "Must be rejected for bad action.",
+                "action": "delete-all",
+            },
+        ],
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "disposition" in str(payload["errors"]).lower()
+
+
+def test_generator_rejects_task_model_policy_without_agent_task_models(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(spec, task_model_policy={"description": "This is not a supported mapping."})
+
+    completed = run_generator(spec, target, run_root, "--json")
+
+    assert completed.returncode == 1
+    assert "agent_task_models" in str(load_json(completed)["errors"])
+
+
 def run_generator_handoff(spec: Path, target_root: Path, run_root: Path, handoff: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return run_script(
         GENERATOR,
@@ -836,6 +1185,7 @@ def write_handoff_packet(
     run_id: str = "run-001",
     status: str = "READY_FOR_GENERATION",
     workflow: str = "workflowprogram-develop",
+    operation: str = "create",
     design_evidence: object = _UNSET,
     review_evidence: object = _UNSET,
     authoring_spec: object = _UNSET,
@@ -853,7 +1203,7 @@ def write_handoff_packet(
             "request": "Design a deterministic Native Workflow JS probe.",
             "targetRoot": str(target_root),
             "runRoot": str(run_root),
-            "operation": "create",
+            "operation": operation,
             "lenses": DEVELOP_LENSES,
         },
     }
@@ -863,7 +1213,7 @@ def write_handoff_packet(
         payload["generationRequest"] = {
             "targetRoot": str(target_root),
             "runRoot": str(run_root),
-            "operation": "create",
+            "operation": operation,
             "rule": "Write candidate assets under RUN_ROOT only.",
         }
     if design_evidence is not _UNSET:
@@ -875,6 +1225,7 @@ def write_handoff_packet(
             "highLevelDesign": "Use one Native JS control plane.",
             "lowLevelDesign": "Return structured handoffs for external effects.",
             "traceability": ["REQ-001 -> Validate -> smoke evidence"],
+            "assetDisposition": [],
             "blockingIssues": [],
         }
     if review_evidence is not _UNSET:
@@ -885,6 +1236,7 @@ def write_handoff_packet(
             "blockingIssues": [],
             "requiredRevisions": [],
             "summary": "Design review is closed.",
+            "assetDispositionReviewed": True,
         }
     if authoring_spec is not _UNSET:
         payload["authoringSpec"] = authoring_spec
@@ -920,6 +1272,97 @@ def test_generator_handoff_passes_with_valid_handoff(tmp_path: Path) -> None:
     assert payload["readiness_report"] is None
     candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "generated-probe.js"
     assert candidate.exists()
+
+
+def test_generator_handoff_update_requires_asset_disposition(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_authoring_spec(spec)
+    write_handoff_packet(handoff, target_root=target, run_root=run_root, operation="update")
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+
+    assert completed.returncode == 1
+    assert "asset_disposition" in str(load_json(completed)["errors"])
+
+
+def test_generator_handoff_update_allows_retain_without_supporting_assets(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    disposition = [
+        {
+            "path": ".claude/commands/existing.md",
+            "action": "retain",
+            "reason": "The existing compatibility entry remains valid.",
+        }
+    ]
+    design_disposition = [
+        {
+            "path": ".claude/commands/existing.md",
+            "action": "retain",
+            "reason": "The existing compatibility entry remains valid.",
+        }
+    ]
+    write_authoring_spec(spec, asset_disposition=disposition)
+    design = pass_design_evidence()
+    design["assetDisposition"] = design_disposition
+    write_handoff_packet(
+        handoff,
+        target_root=target,
+        run_root=run_root,
+        operation="update",
+        design_evidence=design,
+        authoring_spec=authoring_spec_payload(asset_disposition=disposition),
+    )
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_generator_handoff_update_requires_declared_generated_supporting_asset(tmp_path: Path) -> None:
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    disposition = [
+        {
+            "path": ".claude/commands/stride-audit.md",
+            "action": "update",
+            "reason": "The command must route to the Native Workflow.",
+            "supporting_asset_path": ".claude/commands/stride-audit.md",
+        }
+    ]
+    design = pass_design_evidence()
+    design["assetDisposition"] = [
+        {
+            "path": ".claude/commands/stride-audit.md",
+            "action": "update",
+            "reason": "The command must route to the Native Workflow.",
+            "supportingAssetPath": ".claude/commands/stride-audit.md",
+        }
+    ]
+    write_authoring_spec(spec, asset_disposition=disposition)
+    write_handoff_packet(
+        handoff,
+        target_root=target,
+        run_root=run_root,
+        operation="update",
+        design_evidence=design,
+        authoring_spec=authoring_spec_payload(asset_disposition=disposition),
+    )
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+
+    assert completed.returncode == 1
+    assert "supporting_asset_path" in str(load_json(completed)["errors"])
 
 
 def test_generator_handoff_blocks_wrong_status(tmp_path: Path) -> None:
@@ -1139,7 +1582,7 @@ def test_generator_handoff_blocks_authoring_spec_mismatch_before_candidate(tmp_p
     handoff = tmp_path / "handoff.json"
     target.mkdir()
     write_authoring_spec(spec)
-    mismatched = authoring_spec_payload(body="phase('Probe')\n\nreturn { status: 'PASS', drift: true }\n")
+    mismatched = authoring_spec_payload(body="phase('Probe')\n\nreturn { status: 'PASS', drift: true, runId: args?.runId || '' }\n")
     write_handoff_packet(handoff, target_root=target, run_root=run_root, authoring_spec=mismatched)
 
     completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
@@ -1321,7 +1764,7 @@ def test_generator_handoff_still_validates_js(tmp_path: Path) -> None:
     run_root = tmp_path / "run"
     handoff = tmp_path / "handoff.json"
     target.mkdir()
-    bad_body = "phase('Wrong')\n\nreturn { status: 'PASS' }\n"
+    bad_body = "phase('Wrong')\n\nreturn { status: 'PASS', runId: args?.runId || '' }\n"
     bad_authoring_spec = authoring_spec_payload(body=bad_body)
     write_authoring_spec(spec, body=bad_body)
     write_handoff_packet(handoff, target_root=target, run_root=run_root, authoring_spec=bad_authoring_spec)
@@ -1596,6 +2039,90 @@ def test_develop_native_workflow_blocks_failed_authoring_evidence() -> None:
                 },
             },
             "BLOCKED_VALIDATION",
+        ),
+        (
+            {
+                "generationEvidence": pass_generation_evidence(),
+                "validationEvidence": {
+                    **pass_validation_evidence(),
+                    "workflowScriptPath": "/tmp/native-run/outputs/candidate/.claude/workflows/other.js",
+                },
+            },
+            "BLOCKED_VALIDATION",
+        ),
+        (
+            {
+                "generationEvidence": {
+                    **pass_generation_evidence(),
+                    "evidence": ["x"],
+                },
+            },
+            "BLOCKED_GENERATION",
+        ),
+        # Smoke evidence must come from evaluator PASS output
+        (
+            {
+                "generationEvidence": pass_generation_evidence(),
+                "validationEvidence": pass_validation_evidence(),
+                "smokeEvidence": {
+                    "status": "PASS",
+                    "candidateHash": "sha256:probe",
+                    "evidence": ["/tmp/raw-transcript.jsonl"],
+                    "blockingIssues": [],
+                },
+            },
+            "BLOCKED_SMOKE",
+        ),
+        # A smoke report cannot prove both PASS and BLOCKED completion
+        (
+            {
+                "generationEvidence": pass_generation_evidence(),
+                "validationEvidence": pass_validation_evidence(),
+                "smokeEvidence": {
+                    **pass_smoke_evidence(),
+                    "smokeReports": [
+                        {
+                            **pass_smoke_evidence()["smokeReports"][0],
+                            "evidence": {
+                                **pass_smoke_evidence()["smokeReports"][0]["evidence"],
+                                "completed_blocked": True,
+                            },
+                        }
+                    ],
+                },
+            },
+            "BLOCKED_SMOKE",
+        ),
+        # Apply evidence must have a structured manifest, not a path string
+        (
+            {
+                "generationEvidence": pass_generation_evidence(),
+                "validationEvidence": pass_validation_evidence(),
+                "smokeEvidence": pass_smoke_evidence(),
+                "applyApproved": True,
+                "applyEvidence": {
+                    "status": "PASS",
+                    "candidateHash": "sha256:probe",
+                    "applyManifest": "/tmp/native-run/outputs/stages/native-workflow-apply-manifest.json",
+                    "evidence": ["/tmp/apply.json"],
+                    "blockingIssues": [],
+                },
+            },
+            "BLOCKED_CONFLICT",
+        ),
+        # Apply evidence must be bound to the current target root
+        (
+            {
+                "generationEvidence": pass_generation_evidence(),
+                "validationEvidence": pass_validation_evidence(),
+                "smokeEvidence": pass_smoke_evidence(),
+                "applyApproved": True,
+                "applyEvidence": {
+                    **pass_apply_evidence(),
+                    "targetRoot": "/tmp/other-target",
+                },
+            },
+            "BLOCKED_CONFLICT",
         ),
     ],
 )

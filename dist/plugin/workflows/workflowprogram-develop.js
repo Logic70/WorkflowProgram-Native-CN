@@ -28,6 +28,18 @@ const withTaskModel = (taskType, options) => {
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
 const nonEmptyArray = value => asArray(value).length > 0 && asArray(value).every(nonEmpty)
+const isSha256Ref = value => nonEmpty(value) && value.startsWith('sha256:')
+const isAbsolutePathRef = value =>
+  nonEmpty(value) &&
+  (value.startsWith('/') || value.startsWith('\\\\') || /^[A-Za-z]:[\\/]/.test(value))
+const pathIdentity = value => {
+  if (!nonEmpty(value)) return ''
+  const normalized = value.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  const wsl = normalized.match(/^\/mnt\/([A-Za-z])\/(.*)$/)
+  if (wsl) return `${wsl[1].toLowerCase()}:/${wsl[2]}`
+  return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized
+}
+const nonEmptyPathArray = value => asArray(value).length > 0 && asArray(value).every(isAbsolutePathRef)
 const hasLensContent = value => {
   if (typeof value === 'string') return value.trim().length > 0
   if (Array.isArray(value)) return value.length > 0
@@ -47,26 +59,104 @@ const blockingIssues = (evidence, fallback) => {
   const issues = asArray(evidence?.blockingIssues).filter(nonEmpty)
   return issues.length > 0 ? issues : [fallback]
 }
-const hasEvidence = evidence => evidence?.status === 'PASS' && nonEmptyArray(evidence?.evidence)
-const hasDesignEvidence = evidence =>
+const hasEvidence = evidence =>
+  evidence?.status === 'PASS' &&
+  nonEmptyPathArray(evidence?.evidence) &&
+  asArray(evidence?.blockingIssues).length === 0
+const dispositionActions = ['retain', 'generate', 'update', 'archive', 'remove', 'defer', 'not-applicable']
+const actionsRequiringSupportingAsset = ['generate', 'update', 'archive']
+const normalizeDisposition = item => ({
+  path: item?.path || '',
+  action: item?.action || '',
+  reason: item?.reason || '',
+  supportingAssetPath: item?.supportingAssetPath || item?.supporting_asset_path || '',
+})
+const dispositionKey = value =>
+  JSON.stringify(asArray(value).map(normalizeDisposition).sort((left, right) => left.path.localeCompare(right.path)))
+const validAssetDisposition = (value, supportingAssets) => {
+  const supportingPaths = new Set(asArray(supportingAssets).map(item => item?.path).filter(nonEmpty))
+  return asArray(value).every(item => {
+    const normalized = normalizeDisposition(item)
+    if (!nonEmpty(normalized.path) || !dispositionActions.includes(normalized.action) || !nonEmpty(normalized.reason)) return false
+    if (actionsRequiringSupportingAsset.includes(normalized.action)) {
+      return nonEmpty(normalized.supportingAssetPath) && supportingPaths.has(normalized.supportingAssetPath)
+    }
+    return !nonEmpty(normalized.supportingAssetPath) || supportingPaths.has(normalized.supportingAssetPath)
+  })
+}
+const requiresAssetDisposition = operation => ['update', 'migrate'].includes(operation)
+const hasDesignEvidence = (evidence, operation) =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
   nonEmpty(evidence?.highLevelDesign) &&
   nonEmpty(evidence?.lowLevelDesign) &&
-  nonEmptyArray(evidence?.traceability)
-const hasReviewEvidence = evidence =>
+  nonEmptyArray(evidence?.traceability) &&
+  (!requiresAssetDisposition(operation) || asArray(evidence?.assetDisposition).length > 0)
+const hasReviewEvidence = (evidence, operation) =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
-  asArray(evidence?.blockingIssues).length === 0
-const hasAuthoringSpec = spec =>
+  asArray(evidence?.blockingIssues).length === 0 &&
+  (!requiresAssetDisposition(operation) || evidence?.assetDispositionReviewed === true)
+const hasSmokeEvaluatorEvidence = evidence =>
+  hasEvidence(evidence) &&
+  asArray(evidence?.smokeReports).length > 0 &&
+  asArray(evidence?.smokeReports).every(report =>
+    isAbsolutePathRef(report?.reportPath) &&
+    isSha256Ref(report?.reportHash) &&
+    nonEmpty(report?.workflow) &&
+    isAbsolutePathRef(report?.scriptPath) &&
+    isSha256Ref(report?.scriptHash) &&
+    report?.candidateHash === evidence?.candidateHash &&
+    nonEmpty(report?.scenarioId) &&
+    ['full', 'early-blocker', 'completion', 'agent-schema'].includes(report?.evidenceProfile) &&
+    nonEmptyArray(report?.runIds) &&
+    report?.evidence?.workflow_invoked === true &&
+    report?.evidence?.async_launched === true &&
+    report?.evidence?.agent_started === true &&
+    report?.evidence?.schema_result === true &&
+    (
+      (
+        report?.expectedStatus === 'PASS' &&
+        report?.evidence?.completed_pass === true &&
+        report?.evidence?.completed_blocked !== true
+      ) ||
+      (
+        report?.expectedStatus === 'BLOCKED' &&
+        report?.evidence?.completed_blocked === true &&
+        report?.evidence?.completed_pass !== true
+      )
+    )
+  ) &&
+  asArray(evidence?.smokeReports).some(report => report?.expectedStatus === 'PASS')
+const hasApplyManifest = (evidence, targetRoot) =>
+  pathIdentity(evidence?.targetRoot) === pathIdentity(targetRoot) &&
+  evidence?.applyManifest &&
+  typeof evidence.applyManifest === 'object' &&
+  isAbsolutePathRef(evidence.applyManifest?.manifestPath) &&
+  isAbsolutePathRef(evidence.applyManifest?.reportPath) &&
+  asArray(evidence.applyManifest?.entries).length > 0 &&
+  asArray(evidence.applyManifest?.entries).every(item =>
+    nonEmpty(item?.path) &&
+    ['create', 'update', 'noop'].includes(item?.action) &&
+    isSha256Ref(item?.sha256)
+  )
+const hasAuthoringSpec = (spec, operation, designEvidence) =>
   spec &&
   nonEmpty(spec?.name) &&
   nonEmpty(spec?.description) &&
   nonEmpty(spec?.body) &&
   asArray(spec?.phases).length > 0 &&
-  asArray(spec?.phases).every(item => nonEmpty(item?.title))
+  asArray(spec?.phases).every(item => nonEmpty(item?.title)) &&
+  validAssetDisposition(spec?.asset_disposition, spec?.supporting_assets) &&
+  (
+    !requiresAssetDisposition(operation) ||
+    (
+      asArray(spec?.asset_disposition).length > 0 &&
+      dispositionKey(spec.asset_disposition) === dispositionKey(designEvidence?.assetDisposition)
+    )
+  )
 const matchesCandidate = (evidence, candidateHash) =>
-  hasEvidence(evidence) && nonEmpty(candidateHash) && evidence?.candidateHash === candidateHash
+  hasEvidence(evidence) && isSha256Ref(candidateHash) && evidence?.candidateHash === candidateHash
 const logicLensDefinitions = [
   {
     id: 'purpose',
@@ -296,7 +386,7 @@ ${JSON.stringify(requirementSummary)}
 Explorations:
 ${JSON.stringify(explorations)}
 
-The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Do not write files. Return structured JSON only.`,
+The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. For update or migrate operations, return an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not write files. Return structured JSON only.`,
     withTaskModel('architecture', {
       label: 'workflowprogram-develop:design',
       schema: {
@@ -307,16 +397,30 @@ The target Native Workflow JS is the runtime truth. Keep workflow-specific Agent
           highLevelDesign: { type: 'string' },
           lowLevelDesign: { type: 'string' },
           traceability: { type: 'array', items: { type: 'string' } },
+          assetDisposition: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string' },
+                action: { type: 'string', enum: dispositionActions },
+                reason: { type: 'string' },
+                supportingAssetPath: { type: 'string' },
+              },
+              required: ['path', 'action', 'reason'],
+              additionalProperties: false,
+            },
+          },
           blockingIssues: { type: 'array', items: { type: 'string' } },
         },
-        required: ['status', 'summary', 'highLevelDesign', 'lowLevelDesign', 'traceability', 'blockingIssues'],
+        required: ['status', 'summary', 'highLevelDesign', 'lowLevelDesign', 'traceability', 'assetDisposition', 'blockingIssues'],
         additionalProperties: false,
       },
     }),
   )
 }
 
-if (!hasDesignEvidence(designEvidence)) {
+if (!hasDesignEvidence(designEvidence, operation)) {
   return respond('BLOCKED_DESIGN', {
     blockingIssues: blockingIssues(designEvidence, 'Design did not pass.'),
     designEvidence,
@@ -337,7 +441,7 @@ ${JSON.stringify(requirementSummary)}
 Design:
 ${JSON.stringify(designEvidence)}
 
-Check requirement coverage, lifecycle closure, evidence flow, failure modes, ownership boundaries, and testability. Do not write files. Return structured JSON only.`,
+Check requirement coverage, lifecycle closure, evidence flow, failure modes, ownership boundaries, testability, and the assetDisposition table. For update or migrate operations, set assetDispositionReviewed=true only when every retained, generated, updated, archived, removed, deferred, or not-applicable asset has a justified disposition and required supporting assets are explicit. Do not write files. Return structured JSON only.`,
     withTaskModel('risk-review', {
       label: 'workflowprogram-develop:review',
       schema: {
@@ -347,15 +451,16 @@ Check requirement coverage, lifecycle closure, evidence flow, failure modes, own
           blockingIssues: { type: 'array', items: { type: 'string' } },
           requiredRevisions: { type: 'array', items: { type: 'string' } },
           summary: { type: 'string' },
+          assetDispositionReviewed: { type: 'boolean' },
         },
-        required: ['status', 'blockingIssues', 'requiredRevisions', 'summary'],
+        required: ['status', 'blockingIssues', 'requiredRevisions', 'summary', 'assetDispositionReviewed'],
         additionalProperties: false,
       },
     }),
   )
 }
 
-if (!hasReviewEvidence(reviewEvidence)) {
+if (!hasReviewEvidence(reviewEvidence, operation)) {
   return respond('BLOCKED_DESIGN_REVIEW', {
     blockingIssues: blockingIssues(reviewEvidence, 'Design review did not pass.'),
     designEvidence,
@@ -381,7 +486,11 @@ ${JSON.stringify(designEvidence)}
 Review:
 ${JSON.stringify(reviewEvidence)}
 
-Return a strict authoringSpec object for generate-native-workflow.py. The authoringSpec.body is ONLY the executable body that follows the generated meta header. Do not include export const meta, import statements, require(), module.exports, or any complete JavaScript file header in body. Use valid JavaScript syntax for Claude Code Native Workflow: phase(title), await agent(prompt, options), await parallel(thunks), await pipeline(items, stages...), ordinary JS gates, and a stable return envelope with status. Prefer ordinary await/phase sequencing over pipeline when there is no items collection. Separate L1 schema, L2 JS gates, and L3 external facts; external scripts must be represented as explicit Agent/tool responsibilities or supporting assets, not as comments that pretend execution happened. Return structured JSON only and do not write files.`,
+Return a strict authoringSpec object for generate-native-workflow.py. The authoringSpec.body is ONLY the executable body that follows the generated meta header. Do not include export const meta, import statements, require(), module.exports, or any complete JavaScript file header in body. Use valid JavaScript syntax for Claude Code Native Workflow: phase(title), await agent(prompt, options), await parallel(thunks), await pipeline(items, stages...), ordinary JS gates, and a stable return envelope with status. Prefer ordinary await/phase sequencing over pipeline when there is no items collection. Separate L1 schema, L2 JS gates, and L3 external facts; external scripts must be represented as explicit Agent/tool responsibilities or supporting assets, not as comments that pretend execution happened.
+
+Optional task_model_policy: When the target workflow needs model routing per Agent, set task_model_policy.agent_task_models to a map of agent-label → task-type (e.g. "architecture", "risk-review", "complex-generation"). Omit or leave empty when every agent uses the default model.
+
+Supporting assets and disposition are separate contracts. supporting_assets contains only files that must be generated into the candidate tree, with kind, path, content, and reason. asset_disposition records how existing or target assets are treated, with path, action, reason, and supporting_asset_path when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. For update or migrate operations, asset_disposition must match the reviewed design assetDisposition exactly. archive and remove are migration follow-up actions; do not claim managed apply completed them. Return structured JSON only and do not write files.`,
     withTaskModel('complex-generation', {
       label: 'workflowprogram-develop:author',
       schema: {
@@ -406,10 +515,43 @@ Return a strict authoringSpec object for generate-native-workflow.py. The author
                 },
               },
               body: { type: 'string' },
-              supporting_assets: { type: 'array', items: { type: 'object' } },
-              task_model_policy: { type: 'object' },
+              supporting_assets: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    kind: { type: 'string' },
+                    path: { type: 'string' },
+                    content: { type: 'string' },
+                    reason: { type: 'string' },
+                  },
+                  required: ['kind', 'path', 'content', 'reason'],
+                  additionalProperties: false,
+                },
+              },
+              asset_disposition: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    path: { type: 'string' },
+                    action: { type: 'string', enum: dispositionActions },
+                    reason: { type: 'string' },
+                    supporting_asset_path: { type: 'string' },
+                  },
+                  required: ['path', 'action', 'reason'],
+                  additionalProperties: false,
+                },
+              },
+              task_model_policy: {
+                type: 'object',
+                properties: {
+                  agent_task_models: { type: 'object' },
+                },
+                additionalProperties: false,
+              },
             },
-            required: ['name', 'description', 'phases', 'body', 'supporting_assets'],
+            required: ['name', 'description', 'phases', 'body', 'supporting_assets', 'asset_disposition'],
             additionalProperties: false,
           },
           blockingIssues: { type: 'array', items: { type: 'string' } },
@@ -422,7 +564,7 @@ Return a strict authoringSpec object for generate-native-workflow.py. The author
   authoringSpec = authoringEvidence?.authoringSpec
 }
 
-if (!hasAuthoringSpec(authoringSpec) || authoringEvidence?.status === 'BLOCKED') {
+if (!hasAuthoringSpec(authoringSpec, operation, designEvidence) || authoringEvidence?.status === 'BLOCKED') {
   return respond('BLOCKED_GENERATION', {
     blockingIssues: blockingIssues(authoringEvidence, 'Authoring spec did not pass.'),
     authoringEvidence,
@@ -452,9 +594,14 @@ if (!generationEvidence) {
   })
 }
 
-if (!hasEvidence(generationEvidence) || !nonEmpty(generationEvidence.candidateHash) || !nonEmptyArray(generationEvidence.candidateRefs)) {
+if (
+  !hasEvidence(generationEvidence) ||
+  !isSha256Ref(generationEvidence.candidateHash) ||
+  !nonEmptyPathArray(generationEvidence.candidateRefs) ||
+  !isAbsolutePathRef(generationEvidence.workflowScriptPath)
+) {
   return respond('BLOCKED_GENERATION', {
-    blockingIssues: blockingIssues(generationEvidence, 'Generation PASS evidence, candidateHash, and candidateRefs are required.'),
+    blockingIssues: blockingIssues(generationEvidence, 'Generation PASS evidence, candidateHash, candidateRefs, and workflowScriptPath are required.'),
     generationEvidence,
     nextAction: 'RUN_CONTROLLED_GENERATION',
   })
@@ -471,9 +618,13 @@ if (!validationEvidence) {
   })
 }
 
-if (!matchesCandidate(validationEvidence, generationEvidence.candidateHash)) {
+if (
+  !matchesCandidate(validationEvidence, generationEvidence.candidateHash) ||
+  !isAbsolutePathRef(validationEvidence?.workflowScriptPath) ||
+  pathIdentity(validationEvidence.workflowScriptPath) !== pathIdentity(generationEvidence.workflowScriptPath)
+) {
   return respond('BLOCKED_VALIDATION', {
-    blockingIssues: blockingIssues(validationEvidence, 'Validation PASS evidence must match the generated candidateHash.'),
+    blockingIssues: blockingIssues(validationEvidence, 'Validation PASS evidence must match the generated candidateHash and workflowScriptPath.'),
     validationEvidence,
     nextAction: 'RUN_DETERMINISTIC_VALIDATION',
   })
@@ -498,6 +649,14 @@ if (!matchesCandidate(smokeEvidence, generationEvidence.candidateHash)) {
   })
 }
 
+if (!hasSmokeEvaluatorEvidence(smokeEvidence)) {
+  return respond('BLOCKED_SMOKE', {
+    blockingIssues: ['Interactive smoke evidence must contain structured evaluator reports proving Workflow launch, async run, Agent execution, schema output, and a PASS completion.'],
+    smokeEvidence,
+    nextAction: 'RUN_INTERACTIVE_SMOKE',
+  })
+}
+
 phase('Apply')
 
 const applyApproved = args?.applyApproved === true
@@ -511,9 +670,9 @@ if (applyApproved && !applyEvidence) {
   })
 }
 
-if (applyApproved && (!matchesCandidate(applyEvidence, generationEvidence.candidateHash) || !nonEmpty(applyEvidence?.applyManifest))) {
+if (applyApproved && (!matchesCandidate(applyEvidence, generationEvidence.candidateHash) || !hasApplyManifest(applyEvidence, targetRoot))) {
   return respond('BLOCKED_CONFLICT', {
-    blockingIssues: blockingIssues(applyEvidence, 'Controlled apply PASS evidence, matching candidateHash, and applyManifest are required.'),
+    blockingIssues: blockingIssues(applyEvidence, 'Controlled apply PASS evidence, matching candidateHash and targetRoot, and a structured managed apply manifest are required.'),
     applyEvidence,
     nextAction: 'RESOLVE_CONFLICT',
   })

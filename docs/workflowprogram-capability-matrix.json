@@ -467,7 +467,7 @@
         },
         {
           "file": "tests/unit/test_native_legacy_retirement.py",
-          "markers": ["assessor_returns_ready_retirement_on_current_repo", "ready_for_retirement_is_reachable_with_closure_evidence", "removal_plan_has_grouped_structure"]
+          "markers": ["assessor_returns_blocked_retirement_on_current_repo", "ready_for_retirement_is_reachable_with_closure_evidence", "removal_plan_has_grouped_structure"]
         },
         {
           "file": "docs/native-workflow-control-plane-migration-plan.md",

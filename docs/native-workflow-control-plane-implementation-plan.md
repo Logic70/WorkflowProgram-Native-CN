@@ -372,6 +372,16 @@ P13 已完成按任务类型选择模型的核心实现（见上文实施结果�
 | Round 53 | 新鲜复核无新增 M15 actionable issue；聚焦回归、全量单元、integration gate、仓库 validator、Markdown 链接和 diff 检查通过 | 关闭 M15 product handoff renderer 收窄；legacy 实际删除仍 deferred 至剩余 3 条 blocker 关闭 |
 | Round 54 | 剩余 blocker 中 rollback anchor 和 legacy routing 可由确定性资产关闭；product smoke 仍必须来自真实交互 JSONL，不能伪造 | 新增 `legacy-retirement-anchor.json`；router 收窄为始终 Native 并报告 `manual_migration_required`；测试和文档改为仅剩 product smoke blocker |
 | Round 55 | product smoke 缺少从 evaluator reports 到 assessor evidence 的确定性聚合步骤，手工编辑 flags 容易绕过真实 JSONL 证据 | 新增 `build-native-product-smoke-evidence.py` 和 product smoke manual fixture；聚合器只接受 evaluator PASS reports，覆盖不完整时保持 `declaredComplete=false` |
+| Round 56 | develop smoke report 没有绑定实际 candidate `scriptPath`，evaluator 也缺少稳定落盘输出 | evaluator 增加 `--script-path`、`--candidate-root`、`--out`，develop evidence 校验 `scriptHash`、`candidateHash`、scenario 和 report hash |
+| Round 57 | generation/validation 仍可接受浅 PASS JSON；apply adapter 与真实 `managed-change-result` 形状不一致 | 只接受真实 report schema；以实际 managed-assets 输出和持久化 manifest 回归 apply evidence |
+| Round 58 | product smoke 聚合器只看 schema/status，浅 evaluator PASS 仍可关闭 legacy blocker | 聚合器重新校验 return code、blockers、路径、run ID、profile 和对应证据 |
+| Round 59 | 独立 Claude Code 审查发现静态 validator 漏掉部分宿主工具、裸引用和动态执行；product smoke 未校验 workflow 与 scriptPath 文件名 | 扩展高置信度静态规则并要求产品 workflow 名与脚本文件名一致 |
+| Round 60 | 新鲜复核发现 apply manifest 可以位于旁路路径，目标文件内容和目标根未绑定；schema/profile 版本边界不明确 | apply evidence 显式接收并回传 `targetRoot`，绑定持久化 managed result、目标 manifest 和目标文件 hash；报告校验 schema version 与 evidence profile |
+| Round 61 | 独立 Claude Code 复核发现 JS gate 未拒绝同一 smoke report 同时声明 PASS 与 BLOCKED completion | 增加 completion 互斥 gate 和回归测试；保留 aggregate camelCase schema、tagged-template 拒绝与 persisted report 精确相等的既有契约 |
+| Round 62 | 新鲜 Codex 复核发现 generation/validation 可指向同一 candidate tree 内的不同 JS，`early-blocker` 可被用于 PASS，间接 `eval` / `Function` 引用可绕过静态规则 | generation/validation 共同回传并比较 `workflowScriptPath`；限制 `early-blocker` 仅用于 BLOCKED；拒绝动态执行 API 的裸引用并补充回归测试 |
+| Round 63 | 独立 Claude Code 复核未发现关键 false PASS，但发现注释中的 `eval` / `Function` 名称会触发静态校验 false positive，且 phase alignment 的路径语义需要说明 | forbidden API 检查先剥离注释并补充回归测试；LLD 明确 `PHASE_ALIGNMENT` 只校验声明与调用名称集合；保留已决定的 aggregate camelCase 和 skill listing 兼容 fallback |
+| Round 64 | 独立 Claude Code 窄审再次提出已决策的 aggregate camelCase 和 legacy BLOCKED 问题，同时指出 `skill_listing` content 子串匹配与 body 注释中的 `phase()` 可能污染证据/phase alignment | 接受 exact-token skill listing 与 body 注释剥离两个局部增强并补回归；拒绝 product aggregate 重命名、伪造 product smoke、放宽 meta pure-literal 注释等超出或违背当前契约的建议 |
+| Round 65 | 新鲜收口复核未发现新的 P20 actionable issue；聚焦测试、integration gate、仓库 validator、主 Workflow static validator 和 diff check 均通过 | 关闭 WPN 机制修复阶段；legacy retirement 仍按设计保持 `BLOCKED_RETIREMENT`，唯一活跃阻断是真实 product smoke 未完成 |
 
 P8 已完成：真实 Claude Code CLI 中绝对 `scriptPath` 启动成功，按产品名称 lookup 失败并被记录为部署边界。P9-M10C 已完成五个产品 Native JS 的自动化实现；M11 第一版交互式 smoke harness（`build-native-interactive-smoke.py`）已完成 `packet` 与 `evaluate` 子命令，支持人工执行 packet 生成与确定性 JSONL 判读；M12 已完成 Native manifest、发布资格聚合、managed apply no-op 和 drift 阻断。P13（即 M13）已完成：按任务类型选择模型的核心实现，`resolve-task-model-policy.py` 将逻辑 taskType 解析为模型别名并输出 resolution；product workflow JS 通过 `withTaskModel(taskType, options)` 消费映射结果；31 项单元测试覆盖。M14 已完成只读 legacy 下线资格评估，实际删除仍 deferred。M15 已完成 product handoff renderer 收窄，active develop leaf 不再依赖 M7 readiness/authoring 兼容桥。M16 已关闭 rollback/deprecation anchor 与 legacy routing blocker，当前 active blocker 仅剩完整产品交互式 smoke。Computer Use 终端驱动仍处于 deferred 状态，当前仅支持 manual WSL login-shell execution + deterministic JSONL evaluation。不得将宿主侧 renderer 兼容桥解释为第二套 runtime。
 
@@ -380,3 +390,24 @@ P8 已完成：真实 Claude Code CLI 中绝对 `scriptPath` 启动成功，按�
 - Windows 原生可执行静态校验、生成器单测、仓库 validator 和 integration gate。
 - `dist/plugin/bin/workflowprogram-*` 当前是 Unix launcher，完整 plugin bootstrap 与 runtime smoke matrix 应在 WSL/Linux 运行。
 - Windows 原生直接运行 release 级 smoke matrix 还会受到长 fixture 路径限制；这属于现有分发与测试 harness 的跨平台边界，不属于本轮 Native authoring 迁移范围。
+
+### P20. FreeSTRIDE 迁移回归修复
+
+问题来源：
+
+- FreeSTRIDE 候选 JS 直接调用了 Native Workflow runtime 未提供的 `Bash()`，但旧 validator 仍返回 PASS。
+- 原始 JSONL、占位 evidence 和字符串 manifest 可以绕过 develop 控制面的 smoke/apply gate。
+- authoring spec 将迁移资产内容与资产处置决策混在 `supporting_assets` 中，无法表达 retain/remove/defer 等无内容变更决策。
+
+实施：
+
+- 收紧 `validate-native-workflow-js.py`：拒绝未支持的宿主工具直接调用或裸引用，拒绝动态代码执行，保守检测关键未声明标识符，不要求所有返回 envelope 包含 `runId`。
+- 收紧 `build-native-interactive-smoke.py`、`build-native-develop-evidence.py` 与 `workflowprogram-develop.js`：generation/validation 只接受当前 schema 版本的真实报告，并共同指向同一个 `.claude/workflows/*.js` 主脚本；smoke 只接受绑定 candidate `scriptPath`、`scriptHash`、`candidateHash`、scenario 和有效 evidence profile 的完整 evaluator 报告，且 `early-blocker` 只能证明预期 BLOCKED；apply 显式绑定 `targetRoot`，只接受覆盖 candidate、匹配持久化 managed result、目标 manifest 与目标文件 hash 的结构化证据。
+- 收紧 `generate-native-workflow.py`：将 `asset_disposition` 与 `supporting_assets` 分离，并限制 `task_model_policy` 形状。
+- 更新 leaf skill、HLD、LLD、迁移计划、fixtures 和单元测试，再用真实 FreeSTRIDE 迁移验证门禁。
+
+验收：
+
+- 无效 `Bash()`、宿主工具裸引用、动态代码执行、未声明关键标识符、原始 JSONL、占位证据、字符串 apply manifest、旁路 manifest、目标文件 drift、未覆盖 candidate 的 manifest、缺失迁移 disposition 和未知模型策略字段均失败。
+- 有效最小 JS 不需要 `runId` 仍可通过；retain-only 迁移不需要伪造 supporting asset。
+- FreeSTRIDE 仅在真实 candidate `scriptPath` smoke、evaluator 报告和 managed apply 证据闭合后切换入口。
