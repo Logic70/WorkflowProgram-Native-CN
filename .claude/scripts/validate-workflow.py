@@ -432,6 +432,7 @@ def validate_required_paths(root: Path, result: ValidationResult) -> None:
         ".claude/scripts/build-native-iterate-evidence.py",
         ".claude/scripts/build-native-publish-evidence.py",
         ".claude/scripts/build-native-interactive-smoke.py",
+        ".claude/scripts/workflowprogram-foreground-guard.py",
         ".claude/scripts/validate-native-authoring-readiness.py",
         ".claude/scripts/probe-host-capabilities.py",
         ".claude/scripts/probe-native-workflow-capability.py",
@@ -1111,6 +1112,11 @@ def validate_plugin_metadata(root: Path, result: ValidationResult) -> Optional[D
             result.add_pass("hooks.json defines SessionStart hook")
         else:
             result.add_error("hooks.json must define a non-empty SessionStart hook")
+        pre_tool_use = hooks_meta.get("hooks", {}).get("PreToolUse")
+        if isinstance(pre_tool_use, list) and pre_tool_use:
+            result.add_pass("hooks.json defines PreToolUse foreground guard hook")
+        else:
+            result.add_error("hooks.json must define a non-empty PreToolUse hook")
     except Exception as e:
         result.add_error(f"Cannot parse .claude-plugin/root/hooks/hooks.json: {e}")
 
@@ -1348,6 +1354,7 @@ def validate_dist_plugin(root: Path, plugin_meta: Optional[Dict[str, Any]], resu
         dist_root / "scripts" / "build-native-iterate-evidence.py",
         dist_root / "scripts" / "build-native-publish-evidence.py",
         dist_root / "scripts" / "build-native-interactive-smoke.py",
+        dist_root / "scripts" / "workflowprogram-foreground-guard.py",
         dist_root / "scripts" / "validate-native-authoring-readiness.py",
         dist_root / "scripts" / "probe-host-capabilities.py",
         dist_root / "scripts" / "probe-native-workflow-capability.py",

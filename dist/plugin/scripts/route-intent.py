@@ -60,6 +60,52 @@ INTENT_KEYWORDS = {
 }
 
 
+DEVELOP_ACTION_TERMS = (
+    "迁移",
+    "重构",
+    "改造",
+    "创建",
+    "新建",
+    "生成",
+    "开发",
+    "设计",
+    "修改",
+    "更新",
+    "migrate",
+    "refactor",
+    "port",
+    "create",
+    "build",
+    "develop",
+)
+
+WORKFLOW_TARGET_TERMS = (
+    "workflowprogram",
+    "workflow program",
+    "workflow",
+    "工作流",
+    "native workflow",
+    "native workflow js",
+    ".claude/workflows",
+    "claude workflow",
+    "wpn",
+)
+
+
+def explicit_develop_workflow_intent(request: str) -> bool:
+    """Return True for workflow creation/migration/update requests.
+
+    Domain words such as security audit describe the target workflow's purpose,
+    not necessarily the WorkflowProgram route. A change verb plus a workflow
+    target should therefore beat the generic audit keyword route.
+    """
+
+    text = request.lower()
+    return any(token in text for token in DEVELOP_ACTION_TERMS) and any(
+        token in text for token in WORKFLOW_TARGET_TERMS
+    )
+
+
 def parse_args() -> argparse.Namespace:
     """解析确定性意图路由所需的命令行参数。"""
     parser = argparse.ArgumentParser(description="Route natural-language request to workflowprogram-* intent")
@@ -99,6 +145,15 @@ def choose_intent(request: str) -> Dict[str, object]:
             "confidence": 1.0,
             "reason": "explicit-slash",
             "scores": {k: 0 for k in INTENT_KEYWORDS},
+        }
+
+    if explicit_develop_workflow_intent(request):
+        return {
+            "intent": "develop",
+            "confidence": 0.98,
+            "reason": "explicit-develop-workflow-change",
+            "scores": score_request(request),
+            "ambiguous": False,
         }
 
     scores = score_request(request)

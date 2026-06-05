@@ -31,6 +31,8 @@ Keep workflow-specific prompts inline. Extract reusable Agents only for cross-wo
 
 Named semantic roles are reusable assets, not prompt decorations. If a role such as requirement clarification lead, design reviewer, workflow designer, or authoring spec generator owns durable definitions or is referenced by multiple skills/workflows, define it as a dedicated Agent or shared reference and call it through `agentType`. Do not emulate the role by writing "you are <role>" inside a foreground prompt. JS should pass task-local inputs and enforce gates; the Agent/reference should own the reusable semantics; validators should enforce required fields and handoff completeness.
 
+Requirement clarification Agents must receive settled platform decisions as explicit context. They should ask only target-specific questions that can change workflow phases, gates, evidence, acceptance, or boundaries. Do not ask the user to re-decide WorkflowProgram platform policy such as "Native Workflow JS is the runtime truth", "workflow-local prompts are inline by default", "registered Agents are used only for reusable roles", or "target writes go through candidate plus managed apply".
+
 ## Validation Layers
 
 | Layer | Responsibility | Implementation |
@@ -40,6 +42,8 @@ Named semantic roles are reusable assets, not prompt decorations. If a role such
 | L3 External Fact | files, builds, tests, Git state, report consistency | Agent invoking CLI or deterministic domain script |
 
 Schema does not prove external truth.
+
+If a review schema contains both `blockingIssues` and `requiredRevisions`, the JS gate must treat either non-empty list as blocking. `status: PASS` is insufficient when required revisions remain open.
 
 ## Static Validator Minimum Rules
 
@@ -76,6 +80,16 @@ Record JSONL session evidence when proving Claude Code runtime behavior.
 The develop evidence adapter must accept only evaluator PASS reports produced by `build-native-interactive-smoke.py evaluate`. A smoke PASS report must prove Workflow invocation, asynchronous launch, Agent start, structured schema output, a non-empty run ID, and the expected completion status. It must also bind the actual invocation to the exact candidate `scriptPath`, `scriptHash`, `candidateHash`, and a non-empty scenario identifier. A raw JSONL path, arbitrary transcript, or same-name workflow launched from another path is not smoke evidence.
 
 Generation and validation evidence must likewise come from their real report schemas (`native-workflow-js-generation` and `native-workflow-js-validation`) and identify a script inside the current candidate tree. Do not normalize arbitrary `{"status":"PASS"}` objects.
+
+## Foreground Guard Contract
+
+Product JS controls phase ordering, but the foreground assistant still performs re-entry, controlled scripts, and user communication. A target workflow design should specify how foreground bypass is prevented:
+
+- after every product JS result, persist a run state such as `TARGET_ROOT/.workflowprogram/session-state.json`;
+- `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, and `BLOCKED_*` states are read-only from the foreground perspective;
+- `READY_FOR_GENERATION`, `READY_FOR_VALIDATION`, `READY_FOR_SMOKE`, and `READY_FOR_APPLY` permit only the named controlled script for that state;
+- direct foreground edits to managed target paths such as `.claude/**`, `.workflowprogram/design/**`, and `.workflowprogram/runtime/**` are forbidden;
+- commits require a final `PASS` with `deliveryMode=managed-apply` and an `applyManifest` with entries.
 
 ## Controlled Apply Contract
 

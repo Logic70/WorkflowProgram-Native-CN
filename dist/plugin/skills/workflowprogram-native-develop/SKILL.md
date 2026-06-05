@@ -84,6 +84,40 @@ Workflow({
 
 后续每次调用使用同一个 `RUN_ID`、`RUN_ROOT` 和绝对 `scriptPath`，并累积上一次返回的结构化 evidence。
 
+## Foreground Guard Protocol
+
+After every `Workflow({ scriptPath, args })` return, persist the exact returned
+envelope before taking any next action:
+
+```text
+workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-foreground-guard.py record \
+  --target-root <TARGET_ROOT> \
+  --run-root <RUN_ROOT> \
+  --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json \
+  --json
+```
+
+If the result is `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, or any
+`BLOCKED_*` state, the foreground assistant may only relay questions/blockers or
+collect user confirmation. It must not edit `.claude/**`, `.workflowprogram/design/**`,
+`.workflowprogram/runtime/**`, or commit changes to the target project.
+
+If the result is `READY_FOR_GENERATION`, `READY_FOR_VALIDATION`, `READY_FOR_SMOKE`,
+or `READY_FOR_APPLY`, the foreground assistant must execute only the controlled
+script named by `nextAction` and feed the resulting evidence back into the same
+product JS. Do not repair, rewrite, or complete target files in the foreground.
+
+Before committing a target workflow update, run:
+
+```text
+workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-foreground-guard.py assert-commit \
+  --target-root <TARGET_ROOT> \
+  --json
+```
+
+The commit gate passes only after the product JS returns `PASS` with
+`deliveryMode=managed-apply` and a structured `applyManifest`.
+
 ## Step 3: Relay Re-entrant States
 
 | JS 状态 | 前台动作 |

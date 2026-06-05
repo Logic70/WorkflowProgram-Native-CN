@@ -411,3 +411,47 @@ P8 已完成：真实 Claude Code CLI 中绝对 `scriptPath` 启动成功，按�
 - 无效 `Bash()`、宿主工具裸引用、动态代码执行、未声明关键标识符、原始 JSONL、占位证据、字符串 apply manifest、旁路 manifest、目标文件 drift、未覆盖 candidate 的 manifest、缺失迁移 disposition 和未知模型策略字段均失败。
 - 有效最小 JS 不需要 `runId` 仍可通过；retain-only 迁移不需要伪造 supporting asset。
 - FreeSTRIDE 仅在真实 candidate `scriptPath` smoke、evaluator 报告和 managed apply 证据闭合后切换入口。
+
+### P21. FreeSTRIDE Foreground-Bypass Regression Repairs
+
+Scope:
+
+- Do not modify FreeSTRIDE assets directly. Use the FreeSTRIDE migration JSONL and
+  final candidate only as regression evidence for WPN.
+- Repair WPN so a blocked product JS result cannot be bypassed by the foreground
+  assistant manually writing target files or committing changes.
+
+Design changes:
+
+- D1 clarification receives settled WPN platform decisions and must not ask the
+  user to re-decide them.
+- D1 open question normalization drops resolved/answered objects and never
+  stringifies object questions as `[object Object]`.
+- D4 design review gate treats non-empty `requiredRevisions` as blocking even
+  when `status=PASS`.
+- Product JS uses built-in default task model mappings when no `taskModels` map
+  is supplied; explicit maps still own their provided task types.
+- Intent routing gives workflow create/update/migrate requests priority over
+  domain words such as "security audit".
+- Foreground guard state plus `PreToolUse` hook blocks direct writes to managed
+  target assets and blocks commits until `PASS` + `managed-apply` + manifest.
+
+Implementation tasks:
+
+- Update `workflowprogram-develop.js`, `workflowprogram-audit.js`,
+  `workflowprogram-iterate.js`, and `workflowprogram-native-authoring.js` task
+  model fallback behavior.
+- Add `workflowprogram-foreground-guard.py`, register it in plugin hooks, and
+  include it in repository/dist validation.
+- Update `workflowprogram-native-develop` skill and WorkflowProgram LLD skill
+  references with guard and clarification rules.
+- Add regression tests for route intent, clarification open questions, review
+  revisions, default models, and foreground guard.
+
+Acceptance:
+
+- Focused unit tests pass for Native workflow JS, task model policy, route
+  intent, and foreground guard.
+- `validate-workflow.py` passes after `dist/plugin` is rebuilt.
+- Independent deepseek-v4-flash and deepseek-v4-pro review passes do not report
+  unresolved critical blockers.

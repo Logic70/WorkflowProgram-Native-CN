@@ -19,7 +19,18 @@ export const meta = {
 const workflowName = 'workflowprogram-develop'
 const launchMode = 'plugin-script-path'
 const runId = args?.runId || ''
-const taskModels = args?.taskModels || {}
+const defaultTaskModels = {
+  'clarification': 'deepseek-v4-flash[1M]',
+  'repository-exploration': 'deepseek-v4-flash[1M]',
+  'generation': 'deepseek-v4-flash[1M]',
+  'static-review': 'deepseek-v4-flash[1M]',
+  'architecture': 'deepseek-v4-pro[1M]',
+  'complex-generation': 'deepseek-v4-pro[1M]',
+  'risk-review': 'deepseek-v4-pro[1M]',
+  'publish-verification': 'deepseek-v4-pro[1M]',
+}
+const suppliedTaskModels = args?.taskModels || args?.taskModelResolution?.taskModels
+const taskModels = suppliedTaskModels && typeof suppliedTaskModels === 'object' ? suppliedTaskModels : defaultTaskModels
 const withTaskModel = (taskType, options) => {
   const alias = typeof taskModels[taskType] === 'string' ? taskModels[taskType].trim() : ''
   if (!alias || alias === 'inherit') return options
@@ -96,7 +107,14 @@ const hasReviewEvidence = (evidence, operation) =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
   asArray(evidence?.blockingIssues).length === 0 &&
+  asArray(evidence?.requiredRevisions).length === 0 &&
   (!requiresAssetDisposition(operation) || evidence?.assetDispositionReviewed === true)
+const reviewBlockingIssues = evidence => {
+  const blockers = asArray(evidence?.blockingIssues).filter(nonEmpty)
+  const revisions = asArray(evidence?.requiredRevisions).filter(nonEmpty)
+  const issues = [...blockers, ...revisions.map(item => `Required revision not closed: ${item}`)]
+  return issues.length > 0 ? issues : ['Design review did not pass.']
+}
 const hasSmokeEvaluatorEvidence = evidence =>
   hasEvidence(evidence) &&
   asArray(evidence?.smokeReports).length > 0 &&
@@ -215,6 +233,44 @@ const fallbackQuestion = lens => ({
   question: lens.question,
   reason: `${lens.title} changes the Native Workflow JS design and gates.`,
 })
+const settledPlatformDecisions = [
+  'Native Workflow JS is the runtime control plane for WorkflowProgram develop; commands and skills are entry/support assets, not the executable state machine.',
+  'Workflow-specific Agent prompts are inline in the target JS by default; only reusable cross-workflow roles use registered agentType or shared references.',
+  'agent() options may include label, phase, schema, model, isolation, and agentType; do not use skills: [...] in agent options.',
+  'The foreground assistant must not synthesize or edit target workflow JS directly after a workflow handoff; generation, validation, smoke, and apply must use controlled scripts/evidence.',
+  'Target writes must go to RUN_ROOT/outputs/candidate first and reach TARGET_ROOT only through managed apply with a manifest.',
+  'Old Python runtime assets are not preserved as an active runtime in the Native target; keep, archive, or remove them only through explicit asset disposition.',
+]
+const isResolvedOpenQuestion = question =>
+  question &&
+  typeof question === 'object' &&
+  (
+    question.resolved === true ||
+    ['RESOLVED', 'ANSWERED', 'CLOSED'].includes(String(question.status || '').toUpperCase()) ||
+    nonEmpty(question.answer) ||
+    nonEmpty(question.response) ||
+    nonEmpty(question.resolution)
+  )
+const normalizeOpenQuestion = (question, index) => {
+  if (typeof question === 'string') {
+    if (!nonEmpty(question)) return null
+    return {
+      id: `openQuestion-${index + 1}`,
+      lens: 'purpose',
+      question: question.trim(),
+      reason: 'This open question must be closed before design.',
+    }
+  }
+  if (!question || typeof question !== 'object' || isResolvedOpenQuestion(question)) return null
+  const id = nonEmpty(question.id) ? question.id : `openQuestion-${index + 1}`
+  const text = question.question || question.prompt || question.text
+  return {
+    id,
+    lens: nonEmpty(question.lens) ? question.lens : 'purpose',
+    question: nonEmpty(text) ? text : `Clarify unresolved open question ${id}.`,
+    reason: nonEmpty(question.reason) ? question.reason : 'This open question must be closed before design.',
+  }
+}
 
 phase('Intake')
 
@@ -242,12 +298,9 @@ phase('Clarify')
 const clarification = args?.clarification || {}
 const lenses = clarification.lenses || {}
 const missingLenses = logicLensDefinitions.filter(lens => !hasLensContent(lensValue(lens)))
-const openQuestions = asArray(clarification.openQuestions).map((question, index) => ({
-  id: question?.id || `openQuestion-${index + 1}`,
-  lens: question?.lens || 'purpose',
-  question: question?.question || String(question),
-  reason: question?.reason || 'This open question must be closed before design.',
-}))
+const openQuestions = asArray(clarification.openQuestions)
+  .map((question, index) => normalizeOpenQuestion(question, index))
+  .filter(question => question && nonEmpty(question.question))
 let questions = []
 
 if (missingLenses.length > 0 || openQuestions.length > 0) {
@@ -263,13 +316,16 @@ ${JSON.stringify(clarification)}
 Logic lens definitions:
 ${JSON.stringify(logicLensDefinitions)}
 
+Settled WorkflowProgram platform decisions, not user-choice questions:
+${JSON.stringify(settledPlatformDecisions)}
+
 Missing runtime lens ids:
 ${JSON.stringify(missingLenses.map(lens => lens.id))}
 
 Open questions:
 ${JSON.stringify(openQuestions)}
 
-Use the registered requirement-clarification-lead semantics. Ask 1-3 questions that can change workflow nodes, decisions, evidence, acceptance, or boundaries. Do not write files. Return structured JSON only.`,
+Use the registered requirement-clarification-lead semantics. Ask 1-3 questions that can change workflow nodes, decisions, evidence, acceptance, or boundaries. Do not ask the user to re-decide settled platform decisions above. Do not write files. Return structured JSON only.`,
     withTaskModel('clarification', {
       label: 'workflowprogram-develop:clarify',
       agentType: 'workflowprogram-native-cn:requirement-clarification-lead',
@@ -462,7 +518,7 @@ Check requirement coverage, lifecycle closure, evidence flow, failure modes, own
 
 if (!hasReviewEvidence(reviewEvidence, operation)) {
   return respond('BLOCKED_DESIGN_REVIEW', {
-    blockingIssues: blockingIssues(reviewEvidence, 'Design review did not pass.'),
+    blockingIssues: reviewBlockingIssues(reviewEvidence),
     designEvidence,
     reviewEvidence,
     nextAction: 'FIX_DESIGN_AND_REINVOKE',

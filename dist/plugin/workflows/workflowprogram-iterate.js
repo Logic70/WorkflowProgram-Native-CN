@@ -16,7 +16,18 @@ export const meta = {
 
 const workflowName = 'workflowprogram-iterate'
 const launchMode = 'plugin-script-path'
-const taskModels = args?.taskModels || {}
+const defaultTaskModels = {
+  'clarification': 'deepseek-v4-flash[1M]',
+  'repository-exploration': 'deepseek-v4-flash[1M]',
+  'generation': 'deepseek-v4-flash[1M]',
+  'static-review': 'deepseek-v4-flash[1M]',
+  'architecture': 'deepseek-v4-pro[1M]',
+  'complex-generation': 'deepseek-v4-pro[1M]',
+  'risk-review': 'deepseek-v4-pro[1M]',
+  'publish-verification': 'deepseek-v4-pro[1M]',
+}
+const suppliedTaskModels = args?.taskModels || args?.taskModelResolution?.taskModels
+const taskModels = suppliedTaskModels && typeof suppliedTaskModels === 'object' ? suppliedTaskModels : defaultTaskModels
 const withTaskModel = (taskType, options) => {
   const alias = typeof taskModels[taskType] === 'string' ? taskModels[taskType].trim() : ''
   if (!alias || alias === 'inherit') return options

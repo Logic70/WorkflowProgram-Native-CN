@@ -407,7 +407,7 @@ def test_develop_clarification_task_model_passed_to_agent() -> None:
 
 
 def test_develop_default_model_when_task_models_absent() -> None:
-    """When taskModels is not provided, agents receive undefined model (inherited)."""
+    """When taskModels is not provided, product JS uses the built-in default mapping."""
     base_args = {
         "request": "Create a code review workflow.",
         "targetRoot": "/tmp/target",
@@ -433,8 +433,13 @@ def test_develop_default_model_when_task_models_absent() -> None:
     models = harness_result.get("models", [])
 
     assert result["status"] == "READY_FOR_GENERATION"
-    # All models should be null/undefined when taskModels is absent
-    assert all(m is None for m in models), f"Expected all null models, got: {models}"
+    assert models == [
+        "deepseek-v4-flash[1M]",
+        "deepseek-v4-flash[1M]",
+        "deepseek-v4-pro[1M]",
+        "deepseek-v4-pro[1M]",
+        "deepseek-v4-pro[1M]",
+    ]
 
 
 def test_audit_task_models_passed_to_agents() -> None:

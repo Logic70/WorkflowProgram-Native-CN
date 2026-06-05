@@ -1987,6 +1987,80 @@ def test_develop_native_workflow_requests_confirmation() -> None:
     assert execution["result"]["nextAction"] == "REINVOKE_WITH_CONFIRMATION"
 
 
+def test_develop_native_workflow_ignores_resolved_open_question_objects() -> None:
+    payload = develop_args(
+        clarification={
+            "lenses": DEVELOP_LENSES,
+            "openQuestions": [
+                {
+                    "id": "agent-migration-policy",
+                    "lens": "decisionModel",
+                    "question": "Inline prompts or separate Agent files?",
+                    "answer": "Workflow-local prompts are inline by default.",
+                }
+            ],
+            "confirmedByUser": False,
+        }
+    )
+
+    execution = execute_native_workflow(DEVELOP_WORKFLOW, payload)
+
+    assert execution["result"]["status"] == "READY_FOR_CONFIRMATION"
+    assert execution["labels"] == []
+
+
+def test_develop_native_workflow_does_not_stringify_open_question_object() -> None:
+    payload = develop_args(
+        clarification={
+            "lenses": DEVELOP_LENSES,
+            "openQuestions": [
+                {
+                    "id": "missing-question-text",
+                    "lens": "purpose",
+                }
+            ],
+            "confirmedByUser": False,
+        }
+    )
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        payload,
+        agent_results=[
+            {
+                "status": "NEEDS_USER_INPUT",
+                "questions": [],
+                "lensCoverage": {},
+                "openQuestions": [],
+                "blockingIssues": [],
+            }
+        ],
+    )
+
+    assert execution["result"]["status"] == "NEEDS_USER_INPUT"
+    assert execution["result"]["questions"][0]["question"] == "Clarify unresolved open question missing-question-text."
+    assert "[object Object]" not in json.dumps(execution["result"], ensure_ascii=False)
+
+
+def test_develop_native_workflow_blocks_review_required_revisions() -> None:
+    review = {
+        **pass_review_evidence(),
+        "requiredRevisions": ["Close the asset disposition decision before generation."],
+    }
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            designEvidence=pass_design_evidence(),
+            reviewEvidence=review,
+        ),
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_DESIGN_REVIEW"
+    assert execution["result"]["blockingIssues"] == [
+        "Required revision not closed: Close the asset disposition decision before generation."
+    ]
+
+
 def test_develop_native_workflow_requests_controlled_generation_after_design_review() -> None:
     exploration = {
         "status": "PASS",

@@ -143,6 +143,35 @@ project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ nam
 | D8 Smoke | 验证真实交互式运行 | validation PASS | discovery、launch、Agent、schema、gate、blocker smoke | smoke evidence | 最低 smoke PASS | `BLOCKED_SMOKE` | smoke evidence | transcript、JSONL |
 | D9 Apply / Deliver | 受控写入并交付 | smoke PASS、apply approved | checksum、drift、idempotency、managed apply、manifest | applied manifest、summary | 无 drift，manifest 一致 | `BLOCKED_CONFLICT` | target assets、manifest | apply report |
 
+### 5.1.1 Clarification, Review, And Foreground Guard Repairs
+
+FreeSTRIDE migration evidence exposed three steady-state contracts that must be
+part of `workflowprogram-develop.js`, not just operator guidance:
+
+- D1 clarification receives a `settledPlatformDecisions` list. The registered
+  `requirement-clarification-lead` may ask target-specific questions, but must
+  not ask the user to re-decide WPN platform policy such as Native Workflow JS as
+  runtime truth, workflow-local inline prompts by default, `agent()` option
+  limits, or candidate plus managed apply.
+- D1 open questions are normalized before the Agent call. Resolved or answered
+  objects are ignored; unresolved objects without `question` text get a stable
+  fallback question and must never surface as `[object Object]`.
+- D4 review treats `requiredRevisions` as blocking evidence. A review result
+  with `status=PASS` and non-empty `requiredRevisions` is `BLOCKED_DESIGN_REVIEW`.
+
+Foreground bypass is controlled by `workflowprogram-foreground-guard.py` plus
+the plugin `PreToolUse` hook:
+
+- `record` persists the latest product JS envelope to
+  `TARGET_ROOT/.workflowprogram/session-state.json`;
+- `check` blocks direct foreground writes to managed target assets when WPN is in
+  `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, `BLOCKED_*`, or any state that
+  requires a controlled script;
+- shell commits are allowed only after final `PASS` with
+  `deliveryMode=managed-apply` and an `applyManifest` with entries;
+- controlled generation, validation, smoke, and apply remain explicit scripts
+  selected by the product JS `nextAction`.
+
 ### 5.2 其他产品 workflow
 
 | Workflow | Ordered Stages | 主要输出 |
@@ -227,7 +256,7 @@ export const meta = {
 | `schema` | 结构化输出；gate 消费字段必须存在 |
 | `failureBehavior` | schema 失败、外部事实失败和阻断条件 |
 
-M13 已启用 model policy，工作流 JS 通过 `withTaskModel(taskType, options)` 消费映射结果。JS 无需感知具体模型别名，供应商与版本不散落硬编码在 workflow JS 中。
+M13 已启用 model policy，工作流 JS 通过 `withTaskModel(taskType, options)` 消费映射结果。Product JS 具备最后兜底的默认 task model map：调用方传入 `args.taskModels` 或 `args.taskModelResolution.taskModels` 时以调用方为准；整个映射缺失时使用内置默认值，避免真实 skill 入口遗漏 resolver 后全部继承当前模型。若显式映射中某个 task type 缺失、为空或为 `inherit`，该 Agent 仍省略 `model` 属性以保留精确覆盖能力。
 
 工作流专属 Agent 默认内联。仅在跨 workflow 复用、独立权限、独立调用或长 prompt 独立版本管理时提取 `.claude/agents/*.md`。
 
@@ -544,7 +573,7 @@ M13 已实现可选文件：
 - 嵌套 workflow 必须继续透传 `args.taskModels`，避免子流程重新读取 policy 或产生不同解析结果。
 - policy 缺失、别名不可用或宿主不支持时回退 `inherit`，并记录 evidence。
 - `workflowprogram-develop.js` 的初始映射应为：两个只读探索 Agent 使用 `repository-exploration`，设计 Agent 使用 `architecture`，独立审查 Agent 使用 `risk-review`。
-- M13 已实现 WorkflowProgram 产品 workflow 自身的该能力；调用方仍需在启动 workflow 前显式执行 resolver 并把结果写入 `args.taskModels`。
+- M13 已实现 WorkflowProgram 产品 workflow 自身的该能力；调用方可在启动 workflow 前显式执行 resolver 并把结果写入 `args.taskModels`，也可依赖 product JS 的内置默认映射作为最后兜底。
 - M17 扩展目标 workflow 生成路径：authoring spec 可以携带 `task_model_policy.agent_task_models`，key 为目标 JS 中的 Agent label，value 为逻辑 task type。renderer 生成目标 JS 时只注入 helper 和声明映射，不解析具体模型；具体模型仍由启动目标 workflow 的调用方通过 `args.taskModels` 提供。
 
 目标 authoring spec 示例：
@@ -746,6 +775,9 @@ M12 已实现：
 | 发布资格 | qualification scripts | publish manifest | publish qualification integration |
 | 副作用幂等 | controlled apply scripts | apply manifest | idempotency、drift integration |
 | M13 模型选择 | optional policy resolver + withTaskModel JS helper | `resolve-task-model-policy.py`、`task-model-resolution.json` | policy tests |
+| M19 foreground guard | product JS handoff state + PreToolUse hook | `workflowprogram-foreground-guard.py`、`.workflowprogram/session-state.json` | guard unit tests、hook config validation |
+| M19 clarification repair | product JS settled decisions + open question normalization | `settledPlatformDecisions`、`normalizeOpenQuestion` | clarification unit tests、JSONL regression evidence |
+| M19 review gate repair | product JS review gate | `requiredRevisions` must be empty | design review gate unit test |
 | M14 Legacy 下线评估 | deterministic fact-driven assessor | `assess-native-legacy-retirement.py`、`native-legacy-retirement-assessment` schema | unit tests、closure fixture |
 | M15 Product handoff renderer 收窄 | product handoff gate + deterministic renderer | `generate-native-workflow.py --generation-handoff`、`native-workflow-generation-handoff.json` | handoff pass/fail、mutual exclusion、bridge blocker closure |
 
