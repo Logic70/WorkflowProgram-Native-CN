@@ -243,6 +243,21 @@ export const meta = {
 - 当目标 workflow 包含可配置模型选择时，JS 必须在 `meta` 后声明 `const taskModels = args?.taskModels || {}` 和 `withTaskModel(taskType, options)` 助手。helper 只在 `args.taskModels[taskType]` 是非空且不等于 `inherit` 时添加 `model`；缺失、空字符串和 `inherit` 均必须省略 `model` 属性。
 - `generate-native-workflow.py` 的 authoring spec 可选 `task_model_policy` 字段用于声明生成目标 JS 所需的任务类型映射。该字段不得改变 `meta` 纯字面量头部；只能在 `meta` 后注入 helper，并根据 `agent_task_models` 把声明的 Agent label 映射到逻辑 task type。
 
+### 6.1 Phase 边界判定
+
+`phase(title)` 表示语义执行边界，不是进度标签。一个过程必须具备独立目的，并至少满足以下条件之一，才应成为 Phase 候选：
+
+- 存在明确的输入/输出交接对象。
+- 存在出口 gate，可决定继续、阻断、重入、询问用户或触发副作用。
+- 存在不同的失败恢复方式或 `nextAction`。
+- 位于写入、apply、publish、commit 等副作用边界。
+- 需要不同 executor、permission、model 或 tool。
+- 需要独立证据类型才能让后续判断可信。
+
+判定句：If completing this process changes whether the workflow continues, blocks, re-enters, asks the user, or performs side effects, it is a Phase candidate.
+
+不要因为单个 prompt 段落、helper 函数、数据转换、同一目标和同一 gate 下的多个并行 Agent、只用于展示进度的切分，或没有独立 gate/evidence/recovery 路径的逻辑而创建 Phase。并行探索通常应保留在同一个 Phase 内，除非其输出被独立消费、独立 gate 或失败恢复方式不同。
+
 ## 7. Agent、Skill 与领域脚本边界
 
 ### 7.1 Agent 定义

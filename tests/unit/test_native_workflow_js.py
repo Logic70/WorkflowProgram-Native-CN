@@ -15,6 +15,11 @@ FIXTURES = ROOT / "tests" / "native-workflow-fixtures"
 SAMPLE_MIGRATION = ROOT / "tests" / "manual-fixtures" / "native-workflow-sample-migration"
 AUTHORING_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-native-authoring.js"
 DEVELOP_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-develop.js"
+LOWLEVEL_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "SKILL.md"
+NATIVE_WORKFLOW_REFERENCE = (
+    ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "native-workflow-js.md"
+)
+NATIVE_WORKFLOW_LLD = ROOT / "docs" / "native-workflow-control-plane-lowlevel-design.md"
 PRODUCT_WORKFLOW_SKELETONS: dict[str, str] = {}
 VALIDATE_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-validate.js"
 ITERATE_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-iterate.js"
@@ -1901,6 +1906,26 @@ def test_develop_native_workflow_is_static_valid() -> None:
     completed = run_script(VALIDATOR, "--script", str(DEVELOP_WORKFLOW), "--json")
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_phase_boundary_contract_is_documented_and_prompted() -> None:
+    decision_sentence = (
+        "If completing this process changes whether the workflow continues, blocks, re-enters, "
+        "asks the user, or performs side effects, it is a Phase candidate."
+    )
+    develop_source = DEVELOP_WORKFLOW.read_text(encoding="utf-8")
+    reference = NATIVE_WORKFLOW_REFERENCE.read_text(encoding="utf-8")
+    lld = NATIVE_WORKFLOW_LLD.read_text(encoding="utf-8")
+    skill = LOWLEVEL_SKILL.read_text(encoding="utf-8")
+
+    assert "const phaseBoundaryGuidance" in develop_source
+    assert decision_sentence in develop_source
+    assert decision_sentence in reference
+    assert decision_sentence in lld
+    assert "Phase boundary criteria" in skill
+    assert "single prompt paragraph" in develop_source
+    assert "same-gate parallel exploration" in develop_source
+    assert "phase candidates only when purpose, handoff, gate, evidence, recovery" in develop_source
 
 
 def test_develop_native_workflow_blocks_missing_input() -> None:

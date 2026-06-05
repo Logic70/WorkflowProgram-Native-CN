@@ -23,6 +23,21 @@ Use native APIs and ordinary JavaScript:
 
 Align `meta.phases[*].title` with `phase(title)`.
 
+## Phase Boundary Contract
+
+Use `phase(title)` for semantic execution boundaries, not progress labels. A process is a Phase candidate when it has an independent purpose and at least one of these properties:
+
+- a clear input/output handoff;
+- an exit gate that can continue, block, re-enter, ask the user, or trigger side effects;
+- distinct failure recovery or `nextAction`;
+- a side-effect boundary such as write, apply, publish, or commit;
+- different executor, permission, model, or tool needs;
+- distinct evidence required for trust.
+
+If completing this process changes whether the workflow continues, blocks, re-enters, asks the user, or performs side effects, it is a Phase candidate.
+
+Do not create a Phase for a single prompt paragraph, helper function, data transform, several parallel Agents under one objective and one gate, progress-only split, or logic with no independent gate, evidence, or recovery path. Keep parallel exploration under the same readiness gate in one Phase unless the outputs are independently consumed or failures recover differently.
+
 ## Agent Contract
 
 Define prompt, label, schema, consumed fields, and failure behavior. Any field read by a JS gate must be declared in the schema.

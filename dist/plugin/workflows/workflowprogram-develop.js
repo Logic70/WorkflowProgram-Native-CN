@@ -36,6 +36,13 @@ const withTaskModel = (taskType, options) => {
   if (!alias || alias === 'inherit') return options
   return { ...options, model: alias }
 }
+const phaseBoundaryGuidance = [
+  'Phase Boundary Contract:',
+  'Use phase(title) for semantic execution boundaries, not progress labels.',
+  'A process is a Phase candidate when it has an independent purpose plus a clear input/output handoff, an exit gate, distinct recovery or nextAction, a side-effect boundary, different executor/permission/model/tool needs, or distinct evidence required for trust.',
+  'If completing this process changes whether the workflow continues, blocks, re-enters, asks the user, or performs side effects, it is a Phase candidate.',
+  'Do not create a Phase for a single prompt paragraph, helper function, data transform, several parallel Agents under one objective and one gate, progress-only split, or logic with no independent gate, evidence, or recovery path.',
+].join('\n')
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
 const nonEmptyArray = value => asArray(value).length > 0 && asArray(value).every(nonEmpty)
@@ -194,8 +201,8 @@ const logicLensDefinitions = [
     id: 'processModel',
     legacyId: 'process_model',
     title: 'Process Lens',
-    task: 'Decompose the work into meaningful workflow phases or node candidates.',
-    question: 'Before the next major step starts, what must already be known or produced?',
+    task: 'Decompose the work into phase candidates only when purpose, handoff, gate, evidence, recovery, executor, or side-effect boundary changes.',
+    question: 'Which process boundaries change whether the workflow continues, blocks, re-enters, asks the user, or performs side effects?',
   },
   {
     id: 'decisionModel',
@@ -316,6 +323,9 @@ ${JSON.stringify(clarification)}
 Logic lens definitions:
 ${JSON.stringify(logicLensDefinitions)}
 
+Phase boundary guidance:
+${phaseBoundaryGuidance}
+
 Settled WorkflowProgram platform decisions, not user-choice questions:
 ${JSON.stringify(settledPlatformDecisions)}
 
@@ -325,7 +335,7 @@ ${JSON.stringify(missingLenses.map(lens => lens.id))}
 Open questions:
 ${JSON.stringify(openQuestions)}
 
-Use the registered requirement-clarification-lead semantics. Ask 1-3 questions that can change workflow nodes, decisions, evidence, acceptance, or boundaries. Do not ask the user to re-decide settled platform decisions above. Do not write files. Return structured JSON only.`,
+Use the registered requirement-clarification-lead semantics. Ask 1-3 questions that can change workflow phase boundaries, decisions, evidence, acceptance, or boundaries. Do not ask the user to re-decide settled platform decisions above. Do not write files. Return structured JSON only.`,
     withTaskModel('clarification', {
       label: 'workflowprogram-develop:clarify',
       agentType: 'workflowprogram-native-cn:requirement-clarification-lead',
@@ -442,7 +452,10 @@ ${JSON.stringify(requirementSummary)}
 Explorations:
 ${JSON.stringify(explorations)}
 
-The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. For update or migrate operations, return an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not write files. Return structured JSON only.`,
+Phase boundary guidance:
+${phaseBoundaryGuidance}
+
+The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Define phases using the Phase Boundary Contract above; do not split prompt-only work or same-gate parallel exploration into noisy phases. For update or migrate operations, return an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not write files. Return structured JSON only.`,
     withTaskModel('architecture', {
       label: 'workflowprogram-develop:design',
       schema: {
@@ -542,7 +555,10 @@ ${JSON.stringify(designEvidence)}
 Review:
 ${JSON.stringify(reviewEvidence)}
 
-Return a strict authoringSpec object for generate-native-workflow.py. The authoringSpec.body is ONLY the executable body that follows the generated meta header. Do not include export const meta, import statements, require(), module.exports, or any complete JavaScript file header in body. Use valid JavaScript syntax for Claude Code Native Workflow: phase(title), await agent(prompt, options), await parallel(thunks), await pipeline(items, stages...), ordinary JS gates, and a stable return envelope with status. Prefer ordinary await/phase sequencing over pipeline when there is no items collection. Do not call Claude Code host tools such as Bash, Read, Write, Edit, or Workflow as JavaScript globals. Do not put skills: [...] in agent options; if a stage needs a reusable skill or CLI tool, state the tool/skill responsibility inside the Agent prompt and require schema fields proving completion. Separate L1 schema, L2 JS gates, and L3 external facts; external scripts must be represented as explicit Agent/tool responsibilities or supporting assets, not as comments that pretend execution happened.
+Phase boundary guidance:
+${phaseBoundaryGuidance}
+
+Return a strict authoringSpec object for generate-native-workflow.py. The authoringSpec.body is ONLY the executable body that follows the generated meta header. Do not include export const meta, import statements, require(), module.exports, or any complete JavaScript file header in body. Use valid JavaScript syntax for Claude Code Native Workflow: phase(title), await agent(prompt, options), await parallel(thunks), await pipeline(items, stages...), ordinary JS gates, and a stable return envelope with status. Prefer ordinary await/phase sequencing over pipeline when there is no items collection. Set authoringSpec.phases from the Phase Boundary Contract above, not from prompt paragraphs or same-gate parallel Agents. Do not call Claude Code host tools such as Bash, Read, Write, Edit, or Workflow as JavaScript globals. Do not put skills: [...] in agent options; if a stage needs a reusable skill or CLI tool, state the tool/skill responsibility inside the Agent prompt and require schema fields proving completion. Separate L1 schema, L2 JS gates, and L3 external facts; external scripts must be represented as explicit Agent/tool responsibilities or supporting assets, not as comments that pretend execution happened.
 
 Optional task_model_policy: When the target workflow needs model routing per Agent, set task_model_policy.agent_task_models to a map of agent-label → task-type (e.g. "architecture", "risk-review", "complex-generation"). Omit or leave empty when every agent uses the default model.
 

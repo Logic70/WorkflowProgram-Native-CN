@@ -30,7 +30,7 @@ Specify:
 
 - target directories and files;
 - Native Workflow JS module shape and pure-literal `meta`;
-- phases, Agent prompts, schemas, JS gates, `parallel()`, and `pipeline()`;
+- phases, Phase boundary criteria, Agent prompts, schemas, JS gates, `parallel()`, and `pipeline()`;
 - semantic ownership for reusable prompts and roles: dedicated Agent files or shared references own reusable clarification/review/generation semantics; JS owns ordering and gates; deterministic scripts own enforcement;
 - authoring stages, inputs, outputs, failure states, and evidence;
 - static validator rules and fixtures;
