@@ -31,6 +31,7 @@ AGENT_ASSIGNMENT_PATTERN = re.compile(
     re.MULTILINE,
 )
 AGENT_CALL_PATTERN = re.compile(r"\b(?:agent|workflowprogramAgent)\s*\(")
+SUPPORTED_AGENT_OPTION_KEYS = {"label", "phase", "schema", "model", "isolation", "agentType"}
 PATH_HINT_PATTERN = re.compile(r"(?:[A-Za-z0-9_.-]+/)+")
 WRITE_HINT_PATTERN = re.compile(r"\b(?:write|edit|create|update|modify|save|overwrite)\b", re.IGNORECASE)
 
@@ -358,10 +359,19 @@ def validate_gate_schemas(text: str, errors: list[dict[str, str]]) -> None:
 def first_top_level_argument(call: str) -> str:
     """Return the first argument from a balanced call string like ``(...)``."""
 
+    args = top_level_arguments(call)
+    return args[0] if args else ""
+
+
+def top_level_arguments(call: str) -> list[str]:
+    """Split a balanced call string into top-level argument strings."""
+
     inner = call[1:-1]
     depth = 0
     quote: str | None = None
     escaped = False
+    start = 0
+    args: list[str] = []
     for index, char in enumerate(inner):
         if quote is not None:
             if escaped:
@@ -379,8 +389,98 @@ def first_top_level_argument(call: str) -> str:
         elif char in ")]}":
             depth -= 1
         elif char == "," and depth == 0:
-            return inner[:index]
-    return inner
+            args.append(inner[start:index].strip())
+            start = index + 1
+    tail = inner[start:].strip()
+    if tail:
+        args.append(tail)
+    return args
+
+
+def object_top_level_keys(source: str) -> set[str]:
+    """Return visible top-level keys from a JavaScript object literal."""
+
+    source = strip_comments(source).strip()
+    if not source.startswith("{"):
+        return set()
+    try:
+        literal, _ = extract_balanced(source, 0, "{", "}")
+    except ValueError:
+        return set()
+
+    keys: set[str] = set()
+    index = 1
+    while index < len(literal) - 1:
+        while index < len(literal) - 1 and literal[index] in " \t\r\n,":
+            index += 1
+        if index >= len(literal) - 1:
+            break
+        char = literal[index]
+        if char in {"'", '"'}:
+            end = skip_quoted_literal(literal, index, char)
+            key = literal[index + 1 : end - 1]
+            cursor = end
+        else:
+            match = IDENTIFIER_PATTERN.match(literal, index)
+            if not match:
+                index += 1
+                continue
+            key = match.group(0)
+            cursor = match.end()
+        while cursor < len(literal) - 1 and literal[cursor].isspace():
+            cursor += 1
+        if cursor < len(literal) - 1 and literal[cursor] == ":":
+            keys.add(key)
+            cursor += 1
+            depth = 0
+            quote: str | None = None
+            escaped = False
+            while cursor < len(literal) - 1:
+                current = literal[cursor]
+                if quote is not None:
+                    if escaped:
+                        escaped = False
+                    elif current == "\\":
+                        escaped = True
+                    elif current == quote:
+                        quote = None
+                    cursor += 1
+                    continue
+                if current in {"'", '"', "`"}:
+                    quote = current
+                elif current in "([{":
+                    depth += 1
+                elif current in ")]}":
+                    depth -= 1
+                elif current == "," and depth == 0:
+                    break
+                cursor += 1
+        index = cursor + 1
+    return keys
+
+
+def validate_agent_option_shapes(text: str, errors: list[dict[str, str]]) -> None:
+    """Reject unsupported top-level Agent option keys such as `skills`."""
+
+    for match in AGENT_CALL_PATTERN.finditer(text):
+        open_index = text.find("(", match.start())
+        try:
+            agent_call, _ = extract_balanced(text, open_index, "(", ")")
+        except ValueError:
+            errors.append(error("AGENT_CALL_INVALID", "An Agent call is not balanced."))
+            continue
+        args = top_level_arguments(agent_call)
+        if len(args) < 2:
+            continue
+        keys = object_top_level_keys(args[1])
+        unsupported = sorted(keys - SUPPORTED_AGENT_OPTION_KEYS)
+        if unsupported:
+            errors.append(
+                error(
+                    "UNSUPPORTED_AGENT_OPTION",
+                    "Agent options contain unsupported top-level keys: " + ", ".join(unsupported),
+                )
+            )
 
 
 def validate_pipeline_shapes(text: str, errors: list[dict[str, str]]) -> None:
@@ -537,6 +637,7 @@ def validate_script(path: Path) -> dict[str, Any]:
     validate_forbidden_apis(text, errors)
     validate_undeclared_native_api(text, errors)
     validate_undeclared_identifiers(text, errors)
+    validate_agent_option_shapes(text, errors)
     validate_gate_schemas(text, errors)
     validate_pipeline_shapes(text, errors)
     validate_parallel_writes(text, errors)

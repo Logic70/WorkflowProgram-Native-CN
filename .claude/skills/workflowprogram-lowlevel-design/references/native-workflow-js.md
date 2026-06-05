@@ -50,6 +50,7 @@ Schema does not prove external truth.
 | phase alignment | `meta.phases` and `phase()` visibly diverge |
 | forbidden API | `fs`, `require()`, `process`, dynamic code execution (`eval()` / `Function()`), `Date.now()`, `Math.random()`, or zero-argument `new Date()` |
 | unsupported host tool reference | direct calls or bare references to `Bash`, `Read`, `Write`, or other Claude Code host tools outside `agent()` |
+| unsupported Agent option | top-level `agent()` option keys outside the supported Native Workflow JS contract (`label`, `phase`, `schema`, `model`, `isolation`, `agentType`), such as `skills` |
 | high-confidence undeclared identifier | a critical runtime identifier such as `runId` is referenced without a visible declaration |
 | schema presence | gate-consumed Agent output has no schema |
 | parallel write hint | parallel prompts visibly write the same directory |

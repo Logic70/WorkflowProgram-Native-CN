@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-05T01:36:39Z",
+  "generated_at": "2026-06-05T02:50:05Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.3",
-  "source_commit": "1ac35bc9fc39dc0fa4556a5238b834f14167ac16",
+  "source_commit": "6268e77c2c3007ea281d182db1eec3217f0d04e0",
   "source_dirty": true,
   "files": [
     {
@@ -429,8 +429,8 @@
     },
     {
       "path": "scripts/validate-native-workflow-js.py",
-      "sha256": "5e4a316f381c0845f620b6f05ae965d63382653845740cd425a5b9512c369f81",
-      "size": 22272
+      "sha256": "131b3b59b0f05cc249b81d09b32195b50324537a471bcfbe75fe086c9c2f4065",
+      "size": 25784
     },
     {
       "path": "scripts/validate-publish-eligibility.py",
@@ -674,8 +674,8 @@
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/references/native-workflow-js.md",
-      "sha256": "44766af925312292d5456543dbbcfa91f180e7c49f8f3710d8785b4eed5f08e5",
-      "size": 5539
+      "sha256": "31cf55244092f9a1e3d2c9b80a0823741e048099fb27d54835b6c265ca45b5a7",
+      "size": 5734
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/references/review-checklist.md",
@@ -719,8 +719,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "bd666da318bd483435ec16315995f1860d894941155b0d7b818ea7119998506c",
-      "size": 28091
+      "sha256": "033f09a168e6e7fc95c05d4f88f308997db7d51bbc8e50ff387471bca1c9b081",
+      "size": 28390
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

@@ -293,6 +293,7 @@ def test_validator_accepts_valid_minimal_fixture() -> None:
         ("invalid-return-envelope.js", "RETURN_ENVELOPE_REQUIRED"),
         ("invalid-undeclared-api.js", "UNDECLARED_NATIVE_API"),
         ("invalid-undeclared-identifier.js", "UNDECLARED_IDENTIFIER"),
+        ("invalid-agent-skills-option.js", "UNSUPPORTED_AGENT_OPTION"),
     ],
 )
 def test_validator_rejects_invalid_fixture(fixture: str, rule: str) -> None:
@@ -454,6 +455,66 @@ def test_validator_allows_declared_run_id(tmp_path: Path) -> None:
 phase('Probe')
 const runId = args?.runId || 'run-001'
 return { status: 'PASS', runId }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_schema_property_named_skills(tmp_path: Path) -> None:
+    script = tmp_path / "schema-skills.js"
+    script.write_text(
+        """export const meta = {
+  name: 'schema-skills',
+  description: 'Schema fields named skills are not Agent options.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const probe = await agent('Return a skills field.', {
+  label: 'probe',
+  schema: {
+    type: 'object',
+    properties: {
+      skills: { type: 'array', items: { type: 'string' } },
+      status: { type: 'string' },
+    },
+    required: ['skills', 'status'],
+  },
+})
+return { status: probe.status }
+""",
+        encoding="utf-8",
+    )
+
+    completed = run_script(VALIDATOR, "--script", str(script), "--json")
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_validator_allows_agent_isolation_option(tmp_path: Path) -> None:
+    script = tmp_path / "agent-isolation.js"
+    script.write_text(
+        """export const meta = {
+  name: 'agent-isolation',
+  description: 'Agent isolation is a supported Native Workflow JS option.',
+  phases: [{ title: 'Probe' }],
+}
+
+phase('Probe')
+const probe = await agent('Return PASS.', {
+  label: 'probe',
+  isolation: 'worktree',
+  schema: {
+    type: 'object',
+    properties: {
+      status: { type: 'string' },
+    },
+    required: ['status'],
+  },
+})
+return { status: probe.status }
 """,
         encoding="utf-8",
     )
