@@ -182,6 +182,22 @@ M7 是验证方向的过渡切片，不是最终稳态。它仍把澄清、JSON 
 - 自动化部分已完成：develop JS 状态机、Node mock runtime fixture、candidate hash adapter、Skill 启动适配器和仓库校验已实现。
 - 环境相关部分：缺输入早期分支的真实 Claude Code `scriptPath` smoke 已完成；包含 Agent 的完整 Design -> Review 和宿主侧 handoff 闭环仍需在 M11 Computer Use harness 中持续覆盖。
 
+### M9C. 已完成：Existing Workflow Migration 收敛规则
+
+目标：
+
+- 修正 `operation=migrate`、`request_kind=redesign_existing`、`target_state=existing_managed_workflow` 场景下的探索收敛。
+- 将目标 Native JS 不存在、旧 spec 过时、旧 runtime 归档、managed-files 更新、重复遗留资产和缺少 Native JS reference 归类为 `migrationTasks`，而不是 `BLOCKED_DESIGN`。
+- 只有目标不可读、没有行为真源、未决用户决策改变拓扑、写入边界不明确或必需资产无替代来源时，才进入 `trueBlockers`。
+- 为 HLD/LLD 提供实现级 positive/negative examples，避免模型只记住一句规则。
+
+准出条件：
+
+- `workflowprogram-develop.js` 的探索 schema 包含 `migrationTasks`、`trueBlockers`、`userDecisions`、`sourceOfTruth` 和 `assetDispositionHints`。
+- migrate 模式下仅 `trueBlockers` 或未决 `userDecisions` 阻断 Design；migrationTasks 会被传入 Design/Author。
+- 单元测试覆盖 missing target workflow、stale legacy assets 等 expected migration work 不阻断，以及 true blocker 仍阻断。
+- `workflowprogram-highlevel-design` 与 `workflowprogram-lowlevel-design` 都能索引实现级正反例。
+
 ### M10A. 自动化已完成、待 M11 完整交互式覆盖：Validate 与 Audit Native 化
 
 目标：

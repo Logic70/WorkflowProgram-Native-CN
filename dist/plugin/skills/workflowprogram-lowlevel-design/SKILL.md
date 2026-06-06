@@ -19,6 +19,8 @@ Always read [references/workflowprogram-lowlevel-structure.md](references/workfl
 
 Read [references/native-workflow-js.md](references/native-workflow-js.md) when designing Native Workflow JS, `.claude/workflows/*.js`, static validation, managed updates, or migration away from the Python runtime.
 
+Read [references/examples/README.md](references/examples/README.md) when deciding Phase boundaries or migrating an existing managed workflow. Load the specific positive and negative example files that match the design problem.
+
 Read [references/review-checklist.md](references/review-checklist.md) before final review.
 
 ## Design Workflow
@@ -34,6 +36,7 @@ Specify:
 - target directories and files;
 - Native Workflow JS module shape and pure-literal `meta`;
 - phases, Phase boundary criteria, Agent prompts, schemas, JS gates, `parallel()`, and `pipeline()`;
+- implementation-level positive and negative examples used to classify phases, existing gaps, true blockers, and migration tasks;
 - semantic ownership for reusable prompts and roles: dedicated Agent files or shared references own reusable clarification/review/generation semantics; JS owns ordering and gates; deterministic scripts own enforcement;
 - authoring stages, inputs, outputs, failure states, and evidence;
 - static validator rules and fixtures;

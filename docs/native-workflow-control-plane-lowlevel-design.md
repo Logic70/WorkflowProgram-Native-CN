@@ -258,6 +258,48 @@ export const meta = {
 
 不要因为单个 prompt 段落、helper 函数、数据转换、同一目标和同一 gate 下的多个并行 Agent、只用于展示进度的切分，或没有独立 gate/evidence/recovery 路径的逻辑而创建 Phase。并行探索通常应保留在同一个 Phase 内，除非其输出被独立消费、独立 gate 或失败恢复方式不同。
 
+### 6.2 Existing Workflow Migration 探索分类
+
+该契约适用于 `operation=migrate`、`request_kind=redesign_existing`、`target_state=existing_managed_workflow` 或 `manual_migration_required=true`。设计和实现中继续使用这些 WPN 术语，不引入新的产品概念。
+
+探索 Agent 必须把结果拆成：
+
+- `findings`：当前事实。
+- `constraints`：目标设计必须遵守的约束。
+- `migrationTasks`：迁移要完成的工作项。
+- `trueBlockers`：无法继续可信设计的真实阻断。
+- `userDecisions`：会改变拓扑、边界或副作用的未决用户决策。
+- `sourceOfTruth`：当前行为真源。
+- `assetDispositionHints`：`retain | generate | update | archive | remove | defer | not-applicable` 建议。
+
+以下情况在 migrate 下默认为 `migrationTasks`，不得直接导致 `BLOCKED_DESIGN`：
+
+- 目标 `.claude/workflows/<name>.js` 不存在。
+- 旧 `workflow-spec.yaml`、旧设计文档或旧 view 与当前入口不一致。
+- `.workflowprogram/runtime/` 需要归档。
+- `.workflowprogram/managed-files.json` 需要更新。
+- 存在重复或历史遗留资产。
+- 没有现成 Native Workflow JS reference。
+
+只有以下情况可进入 `trueBlockers`：
+
+- 目标根目录不可读，或关键资产无法读取。
+- 找不到任何可用行为真源。
+- 存在未解决用户决策且会改变目标 workflow 拓扑、写入边界或副作用。
+- 写入边界不明确，无法判断哪些文件可生成、更新、归档或删除。
+- 必须保留的资产缺失且没有替代来源。
+
+真源优先级：
+
+1. 本轮用户明确决策。
+2. 当前 command 或实际入口行为。
+3. 当前 Agent 与 Skill。
+4. 当前设计元数据。
+5. 退役 runtime 行为。
+6. 历史 candidate 仅作参考。
+
+实现级正反例位于 `.claude/skills/workflowprogram-lowlevel-design/references/examples/`。设计 Native Workflow JS 或迁移已有受管 workflow 时，HLD/LLD 应读取对应样例。
+
 ## 7. Agent、Skill 与领域脚本边界
 
 ### 7.1 Agent 定义

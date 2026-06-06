@@ -38,6 +38,42 @@ If completing this process changes whether the workflow continues, blocks, re-en
 
 Do not create a Phase for a single prompt paragraph, helper function, data transform, several parallel Agents under one objective and one gate, progress-only split, or logic with no independent gate, evidence, or recovery path. Keep parallel exploration under the same readiness gate in one Phase unless the outputs are independently consumed or failures recover differently.
 
+See implementation examples:
+
+- `references/examples/phase-boundary-positive.md`
+- `references/examples/phase-boundary-negative.md`
+
+## Existing Workflow Migration Contract
+
+Use this contract for `operation=migrate`, `request_kind=redesign_existing`, or `target_state=existing_managed_workflow`. Do not introduce a separate product term for this mode.
+
+Exploration must classify results into current facts, migration tasks, true blockers, user decisions, source-of-truth inputs, and asset-disposition hints. Expected migration work is not a design blocker.
+
+Treat these as migration tasks unless no behavioral source of truth exists or write boundaries are unclear:
+
+- missing target `.claude/workflows/<name>.js`;
+- stale `workflow-spec.yaml` or older design metadata;
+- retired `.workflowprogram/runtime/`;
+- stale `managed-files.json`;
+- duplicate legacy assets;
+- no existing Native Workflow JS reference.
+
+True blockers are limited to conditions that prevent a trustworthy design, such as unreadable target roots, no usable source of truth, unresolved user decisions that change topology, unclear write boundaries, or missing required assets with no replacement.
+
+Source-of-truth priority is:
+
+1. explicit user decisions from the current request or re-entry;
+2. current command or entrypoint behavior;
+3. current Agents and Skills;
+4. current design metadata;
+5. retired runtime behavior;
+6. historical candidates as reference only.
+
+See implementation examples:
+
+- `references/examples/migrate-existing-workflow-positive.md`
+- `references/examples/migrate-existing-workflow-negative.md`
+
 ## Agent Contract
 
 Define prompt, label, schema, consumed fields, and failure behavior. Any field read by a JS gate must be declared in the schema.

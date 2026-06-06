@@ -19,6 +19,7 @@ LOWLEVEL_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design"
 NATIVE_WORKFLOW_REFERENCE = (
     ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "native-workflow-js.md"
 )
+LOWLEVEL_EXAMPLES = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "examples"
 NATIVE_WORKFLOW_LLD = ROOT / "docs" / "native-workflow-control-plane-lowlevel-design.md"
 PRODUCT_WORKFLOW_SKELETONS: dict[str, str] = {}
 VALIDATE_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-validate.js"
@@ -1928,6 +1929,23 @@ def test_phase_boundary_contract_is_documented_and_prompted() -> None:
     assert "phase candidates only when purpose, handoff, gate, evidence, recovery" in develop_source
 
 
+def test_existing_workflow_migration_examples_are_implementation_level() -> None:
+    example_index = (LOWLEVEL_EXAMPLES / "README.md").read_text(encoding="utf-8")
+    positive = (LOWLEVEL_EXAMPLES / "migrate-existing-workflow-positive.md").read_text(encoding="utf-8")
+    negative = (LOWLEVEL_EXAMPLES / "migrate-existing-workflow-negative.md").read_text(encoding="utf-8")
+    phase_positive = (LOWLEVEL_EXAMPLES / "phase-boundary-positive.md").read_text(encoding="utf-8")
+    phase_negative = (LOWLEVEL_EXAMPLES / "phase-boundary-negative.md").read_text(encoding="utf-8")
+
+    assert "implementation-level references" in example_index
+    assert '"operation": "migrate"' in positive
+    assert '"migrationTasks"' in positive
+    assert '"trueBlockers": []' in positive
+    assert ".claude/workflows/audit.js does not exist" in negative
+    assert "incorrect result creates an exploration loop" in negative
+    assert "READY_FOR_GENERATION" in phase_positive
+    assert "Read Prompt" in phase_negative
+
+
 def test_develop_native_workflow_blocks_missing_input() -> None:
     execution = execute_native_workflow(DEVELOP_WORKFLOW, {})
 
@@ -2104,6 +2122,122 @@ def test_develop_native_workflow_requests_controlled_generation_after_design_rev
     assert execution["result"]["authoringSpec"] == authoring_spec_payload()
     assert execution["labels"][-1] == "workflowprogram-develop:author"
     assert execution["phases"] == ["Intake", "Clarify", "Confirm", "Design", "Review", "Author", "Generate"]
+
+
+def test_develop_migrate_continues_when_exploration_reports_only_migration_tasks() -> None:
+    exploration = {
+        "status": "BLOCKED",
+        "findings": ["The command file is the current source of truth."],
+        "constraints": ["Do not write target files directly."],
+        "migrationTasks": [
+            "Generate the missing .claude/workflows/generated-probe.js target workflow.",
+            "Archive retired .workflowprogram/runtime assets.",
+            "Update managed-files.json through controlled apply.",
+        ],
+        "trueBlockers": [],
+        "userDecisions": [],
+        "sourceOfTruth": [".claude/commands/generated-probe.md"],
+        "assetDispositionHints": [
+            {
+                "path": ".claude/workflows/generated-probe.js",
+                "action": "generate",
+                "reason": "Missing target workflow is the migration deliverable.",
+            }
+        ],
+        "blockingIssues": [
+            ".claude/workflows/generated-probe.js does not exist.",
+            "No existing Native Workflow JS reference exists.",
+        ],
+    }
+    supporting_assets = [
+        {
+            "kind": "workflow",
+            "path": ".claude/workflows/generated-probe.js",
+            "content": "phase('Probe')\nreturn { status: 'PASS' }\n",
+            "reason": "Generated Native Workflow JS target.",
+        }
+    ]
+    asset_disposition = [
+        {
+            "path": ".claude/workflows/generated-probe.js",
+            "action": "generate",
+            "reason": "Missing target workflow is the migration deliverable.",
+            "supportingAssetPath": ".claude/workflows/generated-probe.js",
+        }
+    ]
+    design = pass_design_evidence()
+    design["assetDisposition"] = asset_disposition
+    authoring = {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(
+            supporting_assets=supporting_assets,
+            asset_disposition=asset_disposition,
+        ),
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="migrate"),
+        agent_results=[exploration, exploration, design, pass_review_evidence(), authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert "workflowprogram-develop:design" in execution["labels"]
+    assert execution["labels"][-1] == "workflowprogram-develop:author"
+
+
+def test_develop_migrate_blocks_true_exploration_blockers() -> None:
+    exploration = {
+        "status": "BLOCKED",
+        "findings": [],
+        "constraints": [],
+        "migrationTasks": ["Generate .claude/workflows/generated-probe.js."],
+        "trueBlockers": ["No usable behavioral source of truth exists."],
+        "userDecisions": [],
+        "sourceOfTruth": [],
+        "assetDispositionHints": [],
+        "blockingIssues": [".claude/workflows/generated-probe.js does not exist."],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="migrate"),
+        agent_results=[exploration, exploration],
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_DESIGN"
+    assert execution["result"]["blockingIssues"] == [
+        "No usable behavioral source of truth exists.",
+        "No usable behavioral source of truth exists.",
+    ]
+    assert execution["labels"] == [
+        "workflowprogram-develop:explore:target-context",
+        "workflowprogram-develop:explore:runtime-boundaries",
+    ]
+
+
+def test_develop_create_still_blocks_failed_exploration_status() -> None:
+    exploration = {
+        "status": "BLOCKED",
+        "findings": [],
+        "constraints": [],
+        "migrationTasks": [],
+        "trueBlockers": [],
+        "userDecisions": [],
+        "sourceOfTruth": [],
+        "assetDispositionHints": [],
+        "blockingIssues": ["Target cannot be read."],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="create"),
+        agent_results=[exploration, exploration],
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_DESIGN"
+    assert execution["result"]["blockingIssues"] == ["Target cannot be read.", "Target cannot be read."]
 
 
 def test_develop_native_workflow_handoff_includes_target_and_run_root() -> None:

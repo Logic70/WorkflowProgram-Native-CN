@@ -28,6 +28,14 @@ Retain a smoke test. Native runtime adoption removes duplicated orchestration co
 - Keep `supporting_assets` and `asset_disposition` separate. Supporting assets describe content to create or update; disposition records retain, update, archive, remove, defer, or not-applicable decisions for migration scope.
 - Do not impose fields such as `runId` on every workflow return unless the native runtime contract or a product-specific envelope requires them. Static validation should reject unsupported host-tool calls or bare references, reject dynamic code execution that hides them, and conservatively detect critical undeclared identifiers without inventing a second runtime API.
 
+## Existing Workflow Migration
+
+For `operation=migrate`, `request_kind=redesign_existing`, or `target_state=existing_managed_workflow`, design with existing WPN terms and do not introduce a separate product concept.
+
+Classify discovered gaps as migration tasks unless they prevent a trustworthy design. Missing target workflow JS, stale design metadata, retired runtime assets, stale manifests, duplicate legacy assets, and lack of a Native JS reference are expected migration inputs when a current command, Agent, Skill, or user decision still defines behavior.
+
+Use the implementation examples under `$workflowprogram-lowlevel-design/references/examples/` before finalizing the HLD.
+
 ## Scope Questions
 
 Resolve:

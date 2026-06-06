@@ -43,6 +43,14 @@ const phaseBoundaryGuidance = [
   'If completing this process changes whether the workflow continues, blocks, re-enters, asks the user, or performs side effects, it is a Phase candidate.',
   'Do not create a Phase for a single prompt paragraph, helper function, data transform, several parallel Agents under one objective and one gate, progress-only split, or logic with no independent gate, evidence, or recovery path.',
 ].join('\n')
+const migrationExplorationGuidance = [
+  'Existing workflow migration contract:',
+  'Use existing WPN terms: operation=migrate, request_kind=redesign_existing, target_state=existing_managed_workflow, or manual_migration_required=true. Do not introduce a separate product concept.',
+  'Classify exploration output into findings, constraints, migrationTasks, trueBlockers, userDecisions, sourceOfTruth, and assetDispositionHints.',
+  'Expected migration work is not a design blocker: missing target .claude/workflows/<name>.js, stale workflow-spec.yaml, retired .workflowprogram/runtime/, stale managed-files.json, duplicate legacy assets, and no existing Native JS reference are migrationTasks when a current command, Agent, Skill, design document, runtime file, candidate, or user decision still defines behavior.',
+  'Only trueBlockers stop Design: unreadable target roots, no usable behavioral source of truth, unresolved user decisions that change topology, unclear write boundaries, or missing required assets with no replacement.',
+  'Source-of-truth priority: explicit user decisions, current command or entrypoint behavior, current Agents and Skills, current design metadata, retired runtime behavior, then historical candidates as reference only.',
+].join('\n')
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
 const nonEmptyArray = value => asArray(value).length > 0 && asArray(value).every(nonEmpty)
@@ -103,6 +111,22 @@ const validAssetDisposition = (value, supportingAssets) => {
   })
 }
 const requiresAssetDisposition = operation => ['update', 'migrate'].includes(operation)
+const decisionText = decision => {
+  if (typeof decision === 'string') return decision
+  if (!decision || typeof decision !== 'object') return ''
+  return decision.question || decision.prompt || decision.text || decision.id || ''
+}
+const explorationDesignBlockers = (explorations, operation) => {
+  if (operation === 'migrate') {
+    return explorations.flatMap(item => [
+      ...asArray(item?.trueBlockers).filter(nonEmpty),
+      ...asArray(item?.userDecisions).map(decisionText).filter(nonEmpty).map(item => `User decision required: ${item}`),
+    ])
+  }
+  return explorations
+    .filter(item => item.status !== 'PASS')
+    .flatMap(item => blockingIssues(item, 'Exploration failed.'))
+}
 const hasDesignEvidence = (evidence, operation) =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
@@ -394,6 +418,7 @@ const requirementSummary = {
   runRoot,
   operation,
   lenses,
+  migrationDecisions: args?.migrationDecisions || args?.explorationDisposition || {},
 }
 
 if (clarification.confirmedByUser !== true) {
@@ -415,7 +440,13 @@ if (!designEvidence) {
 Requirement:
 ${JSON.stringify(requirementSummary)}
 
-Read the target project without creating, editing, or deleting files. Identify facts, constraints, and blocking issues. Return structured JSON only.`,
+Read the target project without creating, editing, or deleting files. Identify facts, constraints, migration tasks, true blockers, user decisions, source-of-truth inputs, and asset disposition hints. For operation=migrate, follow this guidance:
+${migrationExplorationGuidance}
+
+Resolved migration decisions:
+${JSON.stringify(requirementSummary.migrationDecisions)}
+
+Return structured JSON only.`,
         withTaskModel('repository-exploration', {
           label: `workflowprogram-develop:explore:${lens}`,
           schema: {
@@ -424,9 +455,27 @@ Read the target project without creating, editing, or deleting files. Identify f
               status: { type: 'string', enum: ['PASS', 'BLOCKED'] },
               findings: { type: 'array', items: { type: 'string' } },
               constraints: { type: 'array', items: { type: 'string' } },
+              migrationTasks: { type: 'array', items: { type: 'string' } },
+              trueBlockers: { type: 'array', items: { type: 'string' } },
+              userDecisions: { type: 'array', items: { type: 'string' } },
+              sourceOfTruth: { type: 'array', items: { type: 'string' } },
+              assetDispositionHints: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    path: { type: 'string' },
+                    action: { type: 'string', enum: dispositionActions },
+                    reason: { type: 'string' },
+                    supportingAssetPath: { type: 'string' },
+                  },
+                  required: ['path', 'action', 'reason'],
+                  additionalProperties: false,
+                },
+              },
               blockingIssues: { type: 'array', items: { type: 'string' } },
             },
-            required: ['status', 'findings', 'constraints', 'blockingIssues'],
+            required: ['status', 'findings', 'constraints', 'migrationTasks', 'trueBlockers', 'userDecisions', 'sourceOfTruth', 'assetDispositionHints', 'blockingIssues'],
             additionalProperties: false,
           },
         }),
@@ -434,10 +483,10 @@ Read the target project without creating, editing, or deleting files. Identify f
     ),
   )
 
-  const blockedExplorations = explorations.filter(item => item.status !== 'PASS')
-  if (blockedExplorations.length > 0) {
+  const explorationBlockers = explorationDesignBlockers(explorations, operation)
+  if (explorationBlockers.length > 0) {
     return respond('BLOCKED_DESIGN', {
-      blockingIssues: blockedExplorations.flatMap(item => blockingIssues(item, 'Exploration failed.')),
+      blockingIssues: explorationBlockers,
       explorations,
       nextAction: 'FIX_DESIGN_AND_REINVOKE',
     })
@@ -455,7 +504,10 @@ ${JSON.stringify(explorations)}
 Phase boundary guidance:
 ${phaseBoundaryGuidance}
 
-The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Define phases using the Phase Boundary Contract above; do not split prompt-only work or same-gate parallel exploration into noisy phases. For update or migrate operations, return an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not write files. Return structured JSON only.`,
+Migration guidance:
+${migrationExplorationGuidance}
+
+The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Define phases using the Phase Boundary Contract above; do not split prompt-only work or same-gate parallel exploration into noisy phases. For update or migrate operations, turn migrationTasks and assetDispositionHints into an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not block merely because the target workflow JS is missing before Generate, old design metadata is stale, old runtime assets require archive, managed-files is stale, duplicate legacy assets exist, or no Native JS reference exists. Do not write files. Return structured JSON only.`,
     withTaskModel('architecture', {
       label: 'workflowprogram-develop:design',
       schema: {
@@ -510,7 +562,7 @@ ${JSON.stringify(requirementSummary)}
 Design:
 ${JSON.stringify(designEvidence)}
 
-Check requirement coverage, lifecycle closure, evidence flow, failure modes, ownership boundaries, testability, and the assetDisposition table. For update or migrate operations, set assetDispositionReviewed=true only when every retained, generated, updated, archived, removed, deferred, or not-applicable asset has a justified disposition and required supporting assets are explicit. Do not write files. Return structured JSON only.`,
+Check requirement coverage, lifecycle closure, evidence flow, failure modes, ownership boundaries, testability, and the assetDisposition table. For update or migrate operations, set assetDispositionReviewed=true only when every retained, generated, updated, archived, removed, deferred, or not-applicable asset has a justified disposition and required supporting assets are explicit. Do not block a design because a target workflow JS file does not exist before Generate, because retired runtime assets still need archive, or because managed-files needs an apply-time update; verify that the design classifies those items as migration tasks with asset disposition. Do not write files. Return structured JSON only.`,
     withTaskModel('risk-review', {
       label: 'workflowprogram-develop:review',
       schema: {

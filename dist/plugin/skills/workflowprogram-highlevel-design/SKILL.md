@@ -19,6 +19,8 @@ Always read [references/workflowprogram-structure.md](references/workflowprogram
 
 Read [references/native-workflow-js.md](references/native-workflow-js.md) when the design uses Claude Code native Workflow JS, `.claude/workflows/*.js`, agents, skills, or migration away from a custom runtime.
 
+For Native Workflow JS phase boundaries or migration of an existing managed workflow, read the implementation examples in `$workflowprogram-lowlevel-design/references/examples/README.md` and load the matching positive/negative examples before finalizing the HLD.
+
 Read [references/review-checklist.md](references/review-checklist.md) before final review.
 
 ## Design Workflow

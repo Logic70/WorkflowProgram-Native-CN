@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-05T09:41:36Z",
+  "generated_at": "2026-06-06T03:54:59Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.6",
-  "source_commit": "157d1e3af1b67652eb7c510f79b92dbded93e1b0",
+  "source_commit": "497b1658d5cead7c8ea03e73ef32ad14a7ccf922",
   "source_dirty": true,
   "files": [
     {
@@ -649,8 +649,8 @@
     },
     {
       "path": "skills/workflowprogram-highlevel-design/references/native-workflow-js.md",
-      "sha256": "41d0ab0004af2132cbd2e3915cc9eddee8473d20eaa232f599e2960f5bc1ac43",
-      "size": 3045
+      "sha256": "b384eb07dba660f01ee69ba52615771802712796439da5f6dce56332a59f921f",
+      "size": 3731
     },
     {
       "path": "skills/workflowprogram-highlevel-design/references/review-checklist.md",
@@ -664,8 +664,8 @@
     },
     {
       "path": "skills/workflowprogram-highlevel-design/SKILL.md",
-      "sha256": "ee43565c92310d619fbd5ceb93789db8f40be7507963ad2e259483c04a4798d8",
-      "size": 3154
+      "sha256": "3b54345deb5d21fb5c45349eee536d305ca2e94863d55433ad368aa1be2a5c57",
+      "size": 3418
     },
     {
       "path": "skills/workflowprogram-iterate/SKILL.md",
@@ -678,9 +678,34 @@
       "size": 312
     },
     {
+      "path": "skills/workflowprogram-lowlevel-design/references/examples/migrate-existing-workflow-negative.md",
+      "sha256": "a7d9d6768a0a1526a980ae5e02edf337f80456b5c312068142c1aae4b95977aa",
+      "size": 1614
+    },
+    {
+      "path": "skills/workflowprogram-lowlevel-design/references/examples/migrate-existing-workflow-positive.md",
+      "sha256": "29a41c2d57c5fb5e3331aeeb60782695987ad39a8538ba5296421a65082dbc6e",
+      "size": 3094
+    },
+    {
+      "path": "skills/workflowprogram-lowlevel-design/references/examples/phase-boundary-negative.md",
+      "sha256": "d3e704b7810722e967a84d1e65023cc87746580e3e10c47a3f64ea2ad1ea432a",
+      "size": 1430
+    },
+    {
+      "path": "skills/workflowprogram-lowlevel-design/references/examples/phase-boundary-positive.md",
+      "sha256": "035fccb173395680b94085288f11b9fa4f96f2328b64f1c690c59192530de9ab",
+      "size": 1825
+    },
+    {
+      "path": "skills/workflowprogram-lowlevel-design/references/examples/README.md",
+      "sha256": "c3f3578cd116b2daa6830e61d6285679524848f2b98a7c4d50990838714c28da",
+      "size": 1154
+    },
+    {
       "path": "skills/workflowprogram-lowlevel-design/references/native-workflow-js.md",
-      "sha256": "772a0b63a78bfdc6fcb45d108ef90d957df1c6fc7dcc7454fead545161804597",
-      "size": 8376
+      "sha256": "b106c573b23aa9c6b305cf2dea244dcc44239309e7654cb120cc0db7100de9b2",
+      "size": 9970
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/references/review-checklist.md",
@@ -694,8 +719,8 @@
     },
     {
       "path": "skills/workflowprogram-lowlevel-design/SKILL.md",
-      "sha256": "6b2d421d304c326868afeafe6e5f930b56744df3e49e63b351cdab4ae6c24d4d",
-      "size": 3815
+      "sha256": "78efd637a83d42d824537e6b7e7161bf1add79521c25d4805ef13ce4343dc497",
+      "size": 4173
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
@@ -724,8 +749,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "046a1c9704fb92d0a619b2c5a01f4717f25df0e478424842de7f89a3344e8633",
-      "size": 32882
+      "sha256": "4b45ea38ec1a111bb82ae27031d3943a303952649de1575015da60dcd111c194",
+      "size": 36672
     },
     {
       "path": "workflows/workflowprogram-iterate.js",
