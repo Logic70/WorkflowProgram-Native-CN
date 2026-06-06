@@ -2085,6 +2085,144 @@ def test_develop_native_workflow_does_not_stringify_open_question_object() -> No
     assert "[object Object]" not in json.dumps(execution["result"], ensure_ascii=False)
 
 
+def test_develop_migrate_with_empty_clarification_proceeds_to_confirmation() -> None:
+    """migrate with empty lenses and no open questions seeds migration defaults
+    and proceeds to READY_FOR_CONFIRMATION without calling the clarification agent."""
+    payload = develop_args(
+        operation="migrate",
+        clarification={
+            "lenses": {},
+            "openQuestions": [],
+            "confirmedByUser": False,
+        },
+    )
+
+    execution = execute_native_workflow(DEVELOP_WORKFLOW, payload)
+
+    assert execution["result"]["status"] == "READY_FOR_CONFIRMATION"
+    assert execution["result"]["nextAction"] == "REINVOKE_WITH_CONFIRMATION"
+    # No clarification agent was invoked — the migration defaults filled all lenses
+    assert execution["labels"] == []
+    assert execution["agentTypes"] == []
+
+
+def test_develop_migrate_with_partial_lenses_and_no_agent_call() -> None:
+    """migrate with some lenses filled and some missing seeds only the missing ones,
+    then proceeds to confirmation without calling the agent."""
+    payload = develop_args(
+        operation="migrate",
+        clarification={
+            "lenses": {
+                "purpose": "Custom purpose for migration.",
+            },
+            "openQuestions": [],
+            "confirmedByUser": False,
+        },
+    )
+
+    execution = execute_native_workflow(DEVELOP_WORKFLOW, payload)
+
+    assert execution["result"]["status"] == "READY_FOR_CONFIRMATION"
+    assert execution["labels"] == []
+    assert execution["agentTypes"] == []
+
+
+def test_develop_migrate_with_open_questions_still_calls_clarification_agent() -> None:
+    """migrate seeds missing lenses with defaults, but unresolved open questions
+    still trigger the clarification agent."""
+    payload = develop_args(
+        operation="migrate",
+        clarification={
+            "lenses": {},
+            "openQuestions": [
+                {
+                    "id": "migrate-source",
+                    "lens": "objectModel",
+                    "question": "Which existing workflow should be migrated?",
+                }
+            ],
+            "confirmedByUser": False,
+        },
+    )
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        payload,
+        agent_results=[
+            {
+                "status": "NEEDS_USER_INPUT",
+                "questions": [
+                    {
+                        "id": "migrate-source",
+                        "lens": "objectModel",
+                        "question": "Which existing workflow should be migrated?",
+                        "reason": "The migration source determines asset discovery scope.",
+                    }
+                ],
+                "lensCoverage": {},
+                "openQuestions": [],
+                "blockingIssues": [],
+            }
+        ],
+    )
+
+    assert execution["result"]["status"] == "NEEDS_USER_INPUT"
+    assert execution["labels"] == ["workflowprogram-develop:clarify"]
+    assert execution["agentTypes"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
+    # Only the open question is asked - no missing lens questions
+    assert len(execution["result"]["questions"]) == 1
+    assert execution["result"]["questions"][0]["id"] == "migrate-source"
+
+
+def test_develop_create_still_asks_for_missing_lenses() -> None:
+    """create with empty lenses still triggers the clarification agent
+    (regression guard - migration defaults must not leak into create)."""
+    payload = develop_args(
+        operation="create",
+        clarification={
+            "lenses": {},
+            "openQuestions": [],
+            "confirmedByUser": False,
+        },
+    )
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        payload,
+        agent_results=[
+            {
+                "status": "NEEDS_USER_INPUT",
+                "questions": [
+                    {
+                        "id": lens_id,
+                        "lens": lens_id,
+                        "question": f"What design fact is required for {lens_id}?",
+                        "reason": f"{lens_id} changes the workflow design.",
+                    }
+                    for lens_id in [
+                        "purpose",
+                        "objectModel",
+                        "processModel",
+                        "decisionModel",
+                        "evidenceModel",
+                        "acceptanceModel",
+                        "boundaryModel",
+                    ]
+                ],
+                "lensCoverage": {},
+                "openQuestions": [],
+                "blockingIssues": [],
+            }
+        ],
+    )
+
+    assert execution["result"]["status"] == "NEEDS_USER_INPUT"
+    assert execution["labels"] == ["workflowprogram-develop:clarify"]
+    assert execution["agentTypes"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
+    # All 7 lenses are missing - the agent should ask about them
+    assert len(execution["result"]["questions"]) == 7
+
+
 def test_develop_native_workflow_blocks_review_required_revisions() -> None:
     review = {
         **pass_review_evidence(),

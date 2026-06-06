@@ -509,6 +509,7 @@ M11 v1 已完成：
 | 语义触发失败导致用户误以为必须记忆 slash command | 保留 slash command 作为兜底，但文档默认展示自然语言入口 |
 | 后台 Workflow 在需求未收敛时提前执行 | Native develop JS 先返回 `NEEDS_USER_INPUT` / `READY_FOR_CONFIRMATION`，生成阶段再由 generator `--generation-handoff` 校验 `READY_FOR_GENERATION` handoff；`--readiness` 仅保留为 M7 兼容回退 |
 | 需求澄清角色被 prompt-only 伪调用 | M19 抽取 `requirement-clarification-lead` 注册 Agent 和 shared lens definition；smoke/evaluator 检查 JSONL `attributionAgent`，validator 检查 lens drift 和缺失映射 |
+| 迁移已有工作流时反复要求用户重申可推导事实 | `operation=migrate` 在 D1 前用迁移默认 lens 补齐缺失澄清：subprocess 合约从现有资产探索，旧 runtime 默认 retained/deferred 为非活动资产，平台策略不再作为用户问题 |
 | 前台模型自由写 JS authoring spec | M18 后由 `workflowprogram-develop:author` 专用 Agent 产出 `authoringSpec`，前台只保存完整 Workflow result 并运行 `workflowprogram-continue.py`；runner 原样落盘 handoff/spec，generator 校验 handoff/spec 等价 |
 | 正则静态 validator 漏掉 JS module 语法错误 | M18 后静态 validation 包含 ESM module parse、唯一 meta export 和基础 pipeline/parallel 形态负例 |
 | 把 M7 原型或 M8 分发骨架误认为最终控制面 | 文档明确 M7 是过渡切片；M8 只分发五个入口并验证路径启动；M9-M10C 才迁移 WorkflowProgram 自身业务控制流 |

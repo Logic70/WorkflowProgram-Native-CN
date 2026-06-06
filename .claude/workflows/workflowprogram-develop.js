@@ -328,6 +328,28 @@ phase('Clarify')
 
 const clarification = args?.clarification || {}
 const lenses = clarification.lenses || {}
+
+// Seed missing logic lenses with migration defaults for operation=migrate.
+// This prevents D1 from asking users to restate platform policy, subprocess
+// contracts discoverable from existing assets, or old runtime disposition.
+if (operation === 'migrate') {
+  const migrationLensDefaults = {
+    purpose: 'Migrate an existing workflow to Native Workflow JS. The existing behavior defined in commands, agents, skills, and runtime assets is the primary source of truth. Success means a generated candidate Native JS that passes static validation and smoke testing.',
+    objectModel: 'Subprocess contracts are discovered from existing .claude/ commands, agents, skills, and scripts during Design/Explore. Input, intermediate, and output objects are derived from existing runtime behavior and design documents.',
+    processModel: 'Clarify, Explore/Design, Review, Author, Generate, Validate, Smoke, Apply, Deliver -- the standard WorkflowProgram develop pipeline with migration-aware exploration that classifies findings into migrationTasks, trueBlockers, and assetDispositionHints.',
+    decisionModel: 'Migration tasks (missing target JS, stale metadata, retired runtime) are non-blocking during Design. Only trueBlockers stop Design: unreadable target roots, no behavioral source of truth, unresolved topology-changing user decisions, unclear write boundaries, or missing required assets with no replacement.',
+    evidenceModel: 'Success evidence includes generated candidate Native JS, static validation evidence bound to candidate hash, and generation evidence from workflowprogram-continue.py.',
+    acceptanceModel: 'Positive scenario: candidate passes static validation, smoke testing, and produces managed-apply-ready result. Negative scenario: trueBlockers prevent design. Candidate-only delivery without apply is a valid outcome.',
+    boundaryModel: 'Old .workflowprogram/runtime is retained/deferred as non-active unless explicit asset disposition says otherwise. Target writes go to RUN_ROOT/outputs/candidate first. The workflow must never modify target project files without managed apply approval.',
+  }
+  for (const lens of logicLensDefinitions) {
+    const current = lenses?.[lens.id] ?? lenses?.[lens.legacyId]
+    if (!hasLensContent(current) && migrationLensDefaults[lens.id]) {
+      lenses[lens.id] = migrationLensDefaults[lens.id]
+    }
+  }
+}
+
 const missingLenses = logicLensDefinitions.filter(lens => !hasLensContent(lensValue(lens)))
 const openQuestions = asArray(clarification.openQuestions)
   .map((question, index) => normalizeOpenQuestion(question, index))

@@ -158,6 +158,11 @@ part of `workflowprogram-develop.js`, not just operator guidance:
   not ask the user to re-decide WPN platform policy such as Native Workflow JS as
   runtime truth, workflow-local inline prompts by default, `agent()` option
   limits, or candidate plus managed apply.
+- `operation=migrate` seeds missing logic lenses with migration defaults before
+  calling the clarification Agent. Missing purpose, object, process, decision,
+  evidence, acceptance, and boundary lenses are filled from WPN policy and
+  existing-asset discovery rules; unresolved explicit `openQuestions` still
+  trigger the Agent.
 - D1 open questions are normalized before the Agent call. Resolved or answered
   objects are ignored; unresolved objects without `question` text get a stable
   fallback question and must never surface as `[object Object]`.

@@ -43,6 +43,21 @@ also use the snake_case aliases shown here.
 - If the request is already sufficiently clarified, return `PASS` with no questions.
 - If required context is unavailable or contradictory, return `BLOCKED`.
 
+## Migration Mode (operation=migrate)
+
+When the operation is `migrate`, the D1 Clarify phase seeds missing logic lenses with
+migration defaults before calling this agent. Do **not** ask the user to restate:
+
+- **Platform policy**: Native Workflow JS is the settled runtime control plane.
+- **Subprocess contracts**: These are discovered from existing `.claude/` commands,
+  agents, skills, and scripts during Design/Explore - not during Clarify.
+- **Old runtime disposition**: `.workflowprogram/runtime` is retained/deferred as
+  non-active unless explicit asset disposition says otherwise.
+
+Focus only on migration-specific decisions that can change the resulting workflow
+topology, evidence gates, or stop behavior. Accept seeded lens defaults as sufficient
+unless they contradict known migration constraints.
+
 ## Output Contract
 
 Return one JSON object:

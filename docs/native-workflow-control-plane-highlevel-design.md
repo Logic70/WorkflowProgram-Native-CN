@@ -185,6 +185,7 @@ FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个
 - `body` 是 meta 后的执行体，不是完整 JS 文件。`body` 内出现 `export const meta`、`import`、`require()`、`module.exports` 或重复完整文件头时属于 authoring spec 错误。
 - Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查；动态代码执行不得用于隐藏宿主工具引用。
 - `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
+- `operation=migrate` 在 D1 Clarify 前补齐迁移默认 lens：成功信号是生成候选 Native JS 并具备 static validation / smoke evidence；subprocess 合约从现有 `.claude/` 与脚本资产在 Design / Explore 中发现；旧 `.workflowprogram/runtime` 默认 retained/deferred 为非活动资产，除非用户明确要求处置。
 
 ## 6. 运行时视图
 
