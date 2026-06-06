@@ -30,6 +30,7 @@
 | M13 已完成：按任务类型选择模型 | 可选 model policy，默认继承模型 | `task-model-policy.json`、`resolve-task-model-policy.py`、`task-model-resolution.json` | policy unit test、fallback smoke |
 | M14 已完成：Legacy 下线资格评估 | 确定性事实驱动只读评估器 | `assess-native-legacy-retirement.py`、`native-legacy-retirement-assessment` schema | unit tests、closure fixture |
 | M15 已完成：Product handoff renderer 收窄 | `READY_FOR_GENERATION` handoff 成为 renderer 主路径，M7 readiness 仅兼容 | `generate-native-workflow.py --generation-handoff`、`native-workflow-generation-handoff-validation` report | generator/handoff tests、legacy blocker regression |
+| M18 已完成：Foreground bypass hardening for READY_FOR_GENERATION | 确定性 `workflowprogram-continue.py` 消费已保存的 JS 结果，unwrap `{result}` envelopes，写入 handoff 文件，调用 generator 和 evidence builder；guard 只允许此脚本在 READY_FOR_GENERATION 状态下的 shell 写入 | `workflowprogram-continue.py`、`workflowprogram-foreground-guard.py` unwrap、`hooks.json` PowerShell/Shell matcher | continuation runner tests、guard unwrap tests、hook config tests |
 
 ## 3. 目录、文件与模块结构
 
@@ -59,9 +60,11 @@
     ├── validate-publish-qualification.py
     ├── build-native-workflow-manifest.py
     ├── run-interactive-native-smoke.py
-    ├── apply-external-publish.py             # 可选外部发布 adapter
-    ├── resolve-task-model-policy.py          # M13 已完成
-    └── assess-native-legacy-retirement.py    # M14 已完成
+    ├── workflowprogram-foreground-guard.py     # M9 已完成 — PreToolUse hook guard
+    ├── workflowprogram-continue.py             # M18 已完成 — 确定性 continuation runner
+    ├── apply-external-publish.py               # 可选外部发布 adapter
+    ├── resolve-task-model-policy.py            # M13 已完成
+    └── assess-native-legacy-retirement.py      # M14 已完成
 ```
 
 脚本名称代表稳态责任。尚未存在的脚本必须在迁移计划中分阶段实现，不能被解释为当前已实现。
@@ -101,6 +104,8 @@ TARGET_ROOT/
 | `route-native-control-plane.py` | Native 路由与旧 runtime 标记探测 | M16 后所有目标默认 Native；旧 runtime 标记只产生 `manual_migration_required`，不再转回旧主链 |
 | `validate-native-authoring-readiness.py` | M7 前台 readiness 门禁兼容资产 | 不再作为 active develop leaf 主路径；仅在兼容脚本、测试和历史文档中保留 |
 | `assess-native-legacy-retirement.py` | M14 legacy 下线资格评估器 | 事实驱动只读评估器；实际下线 deferred |
+| `workflowprogram-continue.py` | M18 确定性 continuation runner — 消费已保存的 JS 结果，unwrap `{result}` envelopes，写入 handoff 文件，调用 generator 和 evidence builder | 长期保留；READY_FOR_GENERATION 状态下 foreground 的唯一允许路径 |
+| `workflowprogram-foreground-guard.py` | PreToolUse hook 门禁 — 阻断前台对 managed target 路径的直接写入 | 长期保留；M18 增加 `{result}` unwrap 和 READY_FOR_GENERATION continuation 白名单 |
 
 ## 4. WorkflowProgram 入口与模式选择
 
@@ -138,7 +143,7 @@ project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ nam
 | D3 Design | 生成 High-Level 和 Low-Level 设计 | confirmed packet、目标上下文 | 并行探索；串行整合 HLD、LLD、trace | design docs | 边界、输入输出、gate、测试完整 | `BLOCKED_DESIGN` | candidate design docs | design summary |
 | D4 Review | 审视设计闭合 | design docs、requirements | 独立 Agent review；JS 过滤 blocker | review verdict、issues | 无 blocker | `BLOCKED_DESIGN_REVIEW` | review report | closure report |
 | D5 Author | 生成 run-scoped authoring spec | approved design、review verdict | 专用 Authoring Spec Agent 将设计收敛为严格 JSON，不写文件 | `authoringSpec` | schema 合法、body 不含完整文件头、L3 事实边界清楚 | `BLOCKED_GENERATION` | authoring spec | authoring evidence |
-| D6 Generate | 生成 Native JS 和按需 assets | `READY_FOR_GENERATION.authoringSpec` | 前台只落盘 handoff spec；deterministic renderer 验证 handoff/spec 等价后写 candidate | candidate tree | 资产范围合规，handoff/spec 匹配 | `BLOCKED_GENERATION` | candidate tree | generation report |
+| D6 Generate | 生成 Native JS 和按需 assets | `READY_FOR_GENERATION.authoringSpec` | 前台只保存完整 Workflow 结果并运行 `workflowprogram-continue.py`；continuation runner 写 handoff/spec、调用 deterministic renderer、再生成 evidence | candidate tree | 资产范围合规，handoff/spec 匹配 | `BLOCKED_GENERATION` | candidate tree | generation report |
 | D7 Validate | 执行 L1 / L2 / L3 校验 | candidate tree | 静态校验、ESM module parse、按需领域脚本 | validation report | 硬错误为零，module parse PASS | `BLOCKED_VALIDATION` | validation report | rule results |
 | D8 Smoke | 验证真实交互式运行 | validation PASS | discovery、launch、Agent、schema、gate、blocker smoke | smoke evidence | 最低 smoke PASS | `BLOCKED_SMOKE` | smoke evidence | transcript、JSONL |
 | D9 Apply / Deliver | 受控写入并交付 | smoke PASS、apply approved | checksum、drift、idempotency、managed apply、manifest | applied manifest、summary | 无 drift，manifest 一致 | `BLOCKED_CONFLICT` | target assets、manifest | apply report |
@@ -334,7 +339,7 @@ Authoring Spec Agent 的输出 schema：
 | `authoringSpec.task_model_policy.agent_task_models` | 可选 label -> logical task type |
 | `blockingIssues` | `status=BLOCKED` 时说明阻断原因 |
 
-前台 Skill 在 Step 4 只能把该对象原样序列化到 `RUN_ROOT/native-workflow-authoring.json`。如果 `READY_FOR_GENERATION` 不含 `authoringSpec`，或磁盘 spec 与 handoff spec 不一致，generator 必须返回 `BLOCKED_GENERATION`。
+前台 Skill 在 Step 4 只能保存产品 JS 返回的完整 Workflow result，然后调用 `workflowprogram-continue.py`。该 runner 从 product-owned `generationHandoff` 或顶层 result 字段派生 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json` 和 `RUN_ROOT/native-workflow-authoring.json`，再调用 generator。前台不得手写或修补 handoff/spec；如果 `READY_FOR_GENERATION` 不含 `authoringSpec`，或磁盘 spec 与 handoff spec 不一致，generator 必须返回 `BLOCKED_GENERATION`。
 
 ### 7.1.2 Requirement Clarification Lead Agent
 
@@ -432,7 +437,7 @@ Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D9 使�
 | 阶段 | 缺少证据时返回 | 前台或宿主侧动作 | 重新调用时补充 |
 |---|---|---|---|
 | D5 Author | 内部 Agent 阶段，失败返回 `BLOCKED_GENERATION` | 专用 Authoring Spec Agent 产出 `READY_FOR_GENERATION.authoringSpec`，前台不得自由改写 | `authoringSpec` 或 `authoringEvidence` |
-| D6 Generate | `READY_FOR_GENERATION` | 将 handoff 中的 `authoringSpec` 原样落盘，受控 generator 校验 handoff/spec 等价后将 candidate 写入 `RUN_ROOT` | `generationEvidence` |
+| D6 Generate | `READY_FOR_GENERATION` | 保存完整 Workflow result，运行 `workflowprogram-continue.py`，由 runner 原样落盘 handoff/spec、调用 generator 并构造 `generationEvidence` | `generationEvidence` |
 | D7 Validate | `READY_FOR_VALIDATION` | 对 candidate 运行静态校验和按需领域脚本 | `validationEvidence` |
 | D8 Smoke | `READY_FOR_SMOKE` | 通过宿主侧 Computer Use 或人工入口运行交互式 smoke | `smokeEvidence` |
 | D9 Apply | `READY_FOR_APPLY`，仅当 `applyApproved=true` | 执行 checksum、drift、idempotency 和 managed apply | `applyEvidence` |

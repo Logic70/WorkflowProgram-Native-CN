@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-06T03:56:16Z",
+  "generated_at": "2026-06-06T14:59:53Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.7",
-  "source_commit": "74ac553964c286b91275c8d3fb3a997397bad73d",
+  "source_commit": "7af26bfed5447b7fe1f5c751a612599c7b48cb85",
   "source_dirty": true,
   "files": [
     {
@@ -124,8 +124,8 @@
     },
     {
       "path": "hooks/hooks.json",
-      "sha256": "7f3fe02594fcc221a9e98335646c35ea2c1ae1f2b336b200f6e257094dc8d0a4",
-      "size": 607
+      "sha256": "f9c6e8dfc72589ec6fc7de66c30595fdd64d5333a4753e80206df64b187d9c1a",
+      "size": 624
     },
     {
       "path": "requirements.lock.txt",
@@ -528,9 +528,14 @@
       "size": 124459
     },
     {
+      "path": "scripts/workflowprogram-continue.py",
+      "sha256": "8a62f5665cc7db70177a19dc747deecbb695e76014759f9ee57191e93af46a5d",
+      "size": 13662
+    },
+    {
       "path": "scripts/workflowprogram-foreground-guard.py",
-      "sha256": "3c3d9363697a240471bf5c0e9957a793e2f832468ca5c2fd1e14364e810e894e",
-      "size": 14777
+      "sha256": "639d9ef51f2f5eb28204a3d94f50c8ec6019416982a74fcebfa8a219cd929c71",
+      "size": 15964
     },
     {
       "path": "skills/commit/SKILL.md",
@@ -724,8 +729,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "a73f4aa9a380138d10b08c1f0b50023a3afeb1da62cea4457882ea4e4e5bfe2a",
-      "size": 12408
+      "sha256": "6f13339f9dae9bfc33908e0ef808fe5aeb4d50269859979c3f1e858d7310c49c",
+      "size": 13831
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -749,8 +754,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "4b45ea38ec1a111bb82ae27031d3943a303952649de1575015da60dcd111c194",
-      "size": 36672
+      "sha256": "cc374bdbe3f94250993f3311ec8e4d07645dd6358607800518a0e36dd4b6d251",
+      "size": 38523
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

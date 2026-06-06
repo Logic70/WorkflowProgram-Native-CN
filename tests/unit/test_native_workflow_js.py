@@ -2120,6 +2120,11 @@ def test_develop_native_workflow_requests_controlled_generation_after_design_rev
     assert execution["result"]["status"] == "READY_FOR_GENERATION"
     assert execution["result"]["nextAction"] == "RUN_CONTROLLED_GENERATION"
     assert execution["result"]["authoringSpec"] == authoring_spec_payload()
+    assert execution["result"]["generationHandoff"]["status"] == "READY_FOR_GENERATION"
+    assert execution["result"]["generationHandoff"]["workflow"] == "workflowprogram-develop"
+    assert execution["result"]["generationHandoff"]["authoringSpec"] == authoring_spec_payload()
+    assert execution["result"]["continuation"]["script"] == "workflowprogram-continue.py"
+    assert execution["result"]["continuation"]["nextAction"] == "RUN_CONTROLLED_GENERATION"
     assert execution["labels"][-1] == "workflowprogram-develop:author"
     assert execution["phases"] == ["Intake", "Clarify", "Confirm", "Design", "Review", "Author", "Generate"]
 
@@ -2258,6 +2263,10 @@ def test_develop_native_workflow_handoff_includes_target_and_run_root() -> None:
     assert execution["result"]["targetRoot"] == "/tmp/native-target"
     assert execution["result"]["runRoot"] == "/tmp/native-run"
     assert execution["result"]["authoringSpec"] == authoring_spec_payload()
+    assert execution["result"]["generationHandoff"]["targetRoot"] == "/tmp/native-target"
+    assert execution["result"]["generationHandoff"]["runRoot"] == "/tmp/native-run"
+    assert execution["result"]["generationHandoff"]["generationRequest"]["targetRoot"] == "/tmp/native-target"
+    assert execution["result"]["generationHandoff"]["generationRequest"]["runRoot"] == "/tmp/native-run"
 
 
 def test_develop_native_workflow_blocks_failed_authoring_evidence() -> None:

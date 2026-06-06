@@ -60,8 +60,7 @@ WRITE_COMMAND_PATTERNS = (
 
 CONTROLLED_COMMANDS_BY_STATUS = {
     "READY_FOR_GENERATION": (
-        "generate-native-workflow.py",
-        "build-native-develop-evidence.py",
+        "workflowprogram-continue.py",
     ),
     "READY_FOR_VALIDATION": (
         "validate-native-workflow-js.py",
@@ -76,6 +75,15 @@ CONTROLLED_COMMANDS_BY_STATUS = {
         "build-native-develop-evidence.py",
     ),
 }
+
+SIDE_EFFECT_COMMAND_TOKENS = (
+    "generate-native-workflow.py",
+    "build-native-develop-evidence.py",
+    "workflowprogram-continue.py",
+    "validate-native-workflow-js.py",
+    "build-native-interactive-smoke.py",
+    "managed-assets.py",
+)
 
 
 def load_json_file(path: Path) -> dict[str, Any]:
@@ -243,6 +251,10 @@ def command_writes(command: str) -> bool:
     return any(re.search(pattern, lowered) for pattern in WRITE_COMMAND_PATTERNS)
 
 
+def command_has_known_side_effect(command: str) -> bool:
+    return any(token in command for token in SIDE_EFFECT_COMMAND_TOKENS)
+
+
 def command_is_commit(command: str) -> bool:
     return re.search(r"\bgit\s+commit\b", command.lower()) is not None
 
@@ -258,7 +270,8 @@ def command_is_controlled_for_status(command: str, status: str) -> bool:
     if status == "READY_FOR_APPLY":
         return "apply-staged" in command or " apply" in command
     if status == "READY_FOR_GENERATION":
-        return "generate-native-workflow.py" in command or " generation" in command
+        required = ("workflowprogram-continue.py", "--workflow-result", "--target-root", "--run-root")
+        return all(token in command for token in required)
     if status == "READY_FOR_VALIDATION":
         return "validate-native-workflow-js.py" in command or " validation" in command
     if status == "READY_FOR_SMOKE":
@@ -325,12 +338,26 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
             return allow("managed-apply-commit")
         return block("Git commit is allowed only after PASS with managed-apply evidence and apply manifest.", state)
     status = str(state.get("workflowStatus") or "")
-    if command_writes(command) and not command_is_controlled_for_status(command, status):
+    if (command_writes(command) or command_has_known_side_effect(command)) and not command_is_controlled_for_status(command, status):
         return block(
             "Foreground shell writes are blocked for the current WorkflowProgram state; follow nextAction instead.",
             state,
         )
     return allow("bash-tool")
+
+
+def unwrap_result_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap a ``{result: {...}}`` envelope when the inner object carries
+    ``status`` and ``workflow`` keys (the workflow JS respond() shape).
+
+    The Workflow tool may return results wrapped in a ``result`` key. This
+    function peels that envelope so the guard records the actual workflow
+    state, not the outer wrapper.
+    """
+    inner = payload.get("result")
+    if isinstance(inner, dict) and "status" in inner and "workflow" in inner:
+        return inner
+    return payload
 
 
 def command_record(args: argparse.Namespace) -> int:
@@ -344,6 +371,9 @@ def command_record(args: argparse.Namespace) -> int:
         result = load_json_file(Path(args.workflow_result))
     if not isinstance(result, dict):
         raise ValueError("Workflow result must be a JSON object.")
+    result = unwrap_result_envelope(result)
+    if not isinstance(result, dict):
+        raise ValueError("Workflow result after unwrapping must be a JSON object.")
     state = build_state(target_root, run_root, result)
     write_json(state_path_for_target(target_root), state)
     if args.json:

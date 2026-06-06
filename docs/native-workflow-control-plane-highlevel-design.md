@@ -180,7 +180,7 @@ M13 已完成按任务类型选择模型的核心实现。
 FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个目标工作流打补丁：
 
 - 目标 JS authoring spec 不再由前台模型自由综合。`workflowprogram-develop.js` 在 Review 之后进入 Author 阶段，由专用 `workflowprogram-develop:author` Agent 返回严格 `authoringSpec`。
-- 前台 leaf Skill 只把 `READY_FOR_GENERATION.authoringSpec` 原样写入 `RUN_ROOT/native-workflow-authoring.json`，不得根据 LLD 或聊天上下文重写 JS body。
+- 前台 leaf Skill 只保存完整 Workflow result 并运行 `workflowprogram-continue.py`。runner 从 product JS 返回的 `generationHandoff` / 顶层 result 字段原样派生 handoff 与 authoring spec；前台不得根据 LLD 或聊天上下文重写 JS body。
 - Generator 的 `--generation-handoff` 主路径必须验证 handoff 携带 `authoringSpec`，并验证磁盘 spec 与 handoff spec 等价；不一致时在创建 candidate 前失败。
 - `body` 是 meta 后的执行体，不是完整 JS 文件。`body` 内出现 `export const meta`、`import`、`require()`、`module.exports` 或重复完整文件头时属于 authoring spec 错误。
 - Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查；动态代码执行不得用于隐藏宿主工具引用。
@@ -276,6 +276,7 @@ workflow's latest state:
 - `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, and `BLOCKED_*` are read-only;
 - `READY_FOR_GENERATION`, `READY_FOR_VALIDATION`, `READY_FOR_SMOKE`, and
   `READY_FOR_APPLY` permit only their named controlled script;
+- `READY_FOR_GENERATION` 的唯一允许脚本是 `workflowprogram-continue.py`；直接运行 generator、evidence builder 或手写 handoff/spec 均属于 foreground bypass；
 - commits require final `PASS`, `deliveryMode=managed-apply`, and a non-empty
   `applyManifest.entries`.
 

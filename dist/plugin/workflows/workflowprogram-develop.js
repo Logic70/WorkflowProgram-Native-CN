@@ -700,6 +700,36 @@ phase('Generate')
 
 const generationEvidence = args?.generationEvidence
 if (!generationEvidence) {
+  const generationHandoff = {
+    status: 'READY_FOR_GENERATION',
+    workflow: workflowName,
+    launchMode,
+    runId,
+    targetRoot,
+    runRoot,
+    requirementSummary,
+    designEvidence,
+    reviewEvidence,
+    authoringEvidence,
+    authoringSpec,
+    generationRequest: {
+      targetRoot,
+      runRoot,
+      operation,
+      rule: 'The foreground MUST run workflowprogram-continue.py to process this handoff. Do not handwrite handoff input, authoringSpec JSON, or JS body in the foreground. The continuation script unwraps the result envelope, writes the deterministic handoff files, invokes the generator without --apply, and builds generation evidence.',
+    },
+    handoffSpec: {
+      inputFile: 'outputs/stages/native-workflow-generation-handoff-input.json',
+      authoringFile: 'native-workflow-authoring.json',
+      generationReport: 'outputs/stages/native-workflow-generation.json',
+    },
+  }
+  const continuation = {
+    nextAction: 'RUN_CONTROLLED_GENERATION',
+    script: 'workflowprogram-continue.py',
+    command: 'workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-continue.py --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json --target-root <TARGET_ROOT> --run-root <RUN_ROOT> --json',
+    rule: 'The foreground MUST invoke this deterministic script after saving the exact Workflow result; do not write handoff or authoring files manually.',
+  }
   return respond('READY_FOR_GENERATION', {
     targetRoot,
     runRoot,
@@ -712,9 +742,16 @@ if (!generationEvidence) {
       targetRoot,
       runRoot,
       operation,
-      rule: 'Write READY_FOR_GENERATION.authoringSpec unchanged to RUN_ROOT/native-workflow-authoring.json, then run generate-native-workflow.py under RUN_ROOT only. Do not synthesize or edit JS body in the foreground.',
+      rule: 'Run workflowprogram-continue.py to stage the candidate deterministically. Do not handwrite handoff, authoringSpec, or JS body in the foreground.',
     },
+    generationHandoff,
+    continuation,
     nextAction: 'RUN_CONTROLLED_GENERATION',
+    continuationCommand: {
+      script: 'workflowprogram-continue.py',
+      description: 'Deterministic continuation script for READY_FOR_GENERATION - unwraps {result} envelope, writes handoff input and authoring files, invokes generator without --apply, and builds generation evidence.',
+      rule: 'The foreground MUST invoke this deterministic script; the guard only allows workflowprogram-continue.py for READY_FOR_GENERATION shell writes.',
+    },
   })
 }
 

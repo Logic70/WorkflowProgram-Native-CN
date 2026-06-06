@@ -134,41 +134,62 @@ The commit gate passes only after the product JS returns `PASS` with
 
 ## Step 4: Controlled Generation
 
-M15 已将 product handoff 作为主路径；generator 仍是宿主侧 deterministic renderer，不拥有控制顺序：
+M15 已将 product handoff 作为主路径；M18 收紧为确定性 continuation runner。**Foreground 不得手写 handoff input JSON、authoring spec JSON 或 JS body。** 前台必须通过 `workflowprogram-continue.py` 确定性脚本驱动整个 generation pipeline：
 
-1. 将产品 JS 返回的 `READY_FOR_GENERATION` handoff envelope 写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json`（包含 `status`、`workflow`、`runId`、`targetRoot`、`runRoot`、`designEvidence`、`reviewEvidence`、`authoringSpec`、`generationRequest`）。
+### Foreground Bypass Hardening Rule
 
-2. 将 handoff 中的 `authoringSpec` 原样序列化为 `RUN_ROOT/native-workflow-authoring.json`。不得根据 `designEvidence.lowLevelDesign`、聊天记录或模型自由判断重写 JS body；如果 `authoringSpec` 缺失或需要修改，必须重新调用产品 JS 的 Author 阶段，而不是前台手写。
+**NEVER handwrite handoff files in the foreground.** 直接在前台手工创建 `native-workflow-generation-handoff-input.json`、`native-workflow-authoring.json` 或任何 candidate 文件是禁止的。`workflowprogram-foreground-guard.py` 在 `READY_FOR_GENERATION` 状态下只允许运行 `workflowprogram-continue.py`；任何前台 Write/Edit/Bash/PowerShell/Shell 写入 managed target 路径都会被阻断。
 
-   - `supporting_assets` 只描述需要生成、更新或归档的资产内容。
-   - `asset_disposition` 独立描述 update/migrate 时每个现有或目标资产的 `retain | generate | update | archive | remove | defer | not-applicable` 决策。
-   - `task_model_policy` 只接受 `agent_task_models` 映射；不要在 authoring spec 中散落模型别名字段。
+### 4a. Record the Workflow Result
 
-3. 执行 staging，不传 `--apply`：
+先将产品 JS 返回的 envelope 落盘为 latest-workflow-result.json：
 
 ```text
-workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/generate-native-workflow.py \
-  --spec <RUN_ROOT>/native-workflow-authoring.json \
-  --generation-handoff <RUN_ROOT>/outputs/stages/native-workflow-generation-handoff-input.json \
+workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-foreground-guard.py record \
+  --target-root <TARGET_ROOT> \
+  --run-root <RUN_ROOT> \
+  --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json \
+  --json
+```
+
+Guard 的 `record` 子命令现在会 unwrap `{result: {...}}` envelopes——当 Workflow 工具将 JS 结果包装在 `result` 键中时，guard 提取内部对象再持久化状态。
+
+### 4b. Run Deterministic Continuation
+
+```text
+workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-continue.py \
+  --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json \
   --target-root <TARGET_ROOT> \
   --run-root <RUN_ROOT> \
   --json
 ```
 
-`--generation-handoff` 是 M15+M18 主路径。Generator 会验证 handoff status=`READY_FOR_GENERATION`、workflow、targetRoot/runRoot 匹配、generationRequest、designEvidence、reviewEvidence 和 authoringSpec，并验证磁盘 spec 与 handoff authoringSpec 等价。非法、stale 或被前台改写的 handoff 阻断 candidate 写入并落盘结构化验证报告。
+`workflowprogram-continue.py` 执行以下确定性步骤：
 
-Generator 将 handoff 验证结果写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff.json`（schema `native-workflow-generation-handoff-validation`）。
+1. **Unwrap result envelope** — 如果输入包含 `{result: {...}}` 包装，提取内部 workflow 对象。
+2. **Validate handoff** — 确认 status=`READY_FOR_GENERATION`、workflow=`workflowprogram-develop`、runId 非空、authoringSpec 和 generationRequest 存在。
+3. **Write handoff input JSON** — 将完整 handoff envelope（status、workflow、runId、targetRoot、runRoot、designEvidence、reviewEvidence、authoringSpec、generationRequest）写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json`。
+4. **Write authoring spec JSON** — 将 `authoringSpec` 原样序列化为 `RUN_ROOT/native-workflow-authoring.json`。
+5. **Invoke generator** — 调用 `generate-native-workflow.py --generation-handoff` 进行 handoff 验证和 candidate staging（不传 `--apply`）。
+6. **Persist handoff validation report** — generator 必须写入 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff.json`，记录 handoff status、workflow、target/run root、generationRequest、designEvidence、reviewEvidence、authoringSpec 与磁盘 spec 等价性校验。
+7. **Build generation evidence** — 调用 `build-native-develop-evidence.py generation` 规范化 generation 报告。
+8. **Emit continuation report** — 输出结构化 JSON，包含 generationEvidence、所有文件路径和下一步 re-invoke 指令。
 
-4. 规范化 generation evidence：
+如果任何步骤失败，脚本返回 FAIL 报告并列出 blocking issues。
 
-```text
-workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/build-native-develop-evidence.py generation \
-  --candidate-root <RUN_ROOT>/outputs/candidate \
-  --report <RUN_ROOT>/outputs/stages/native-workflow-generation.json \
-  --json
-```
+### 4c. Reinvoke Product JS
 
-4. 把输出作为 `args.generationEvidence` 重新调用产品 JS。输出中的 `workflowScriptPath` 必须是当前 candidate 的 `.claude/workflows/<WORKFLOW_NAME>.js` 绝对路径。非 PASS、candidate 为空、主 Workflow JS 不在标准路径或 evidence 文件不存在时必须保持阻断。
+把 continuation 报告中的 `generationEvidence` 作为 `args.generationEvidence` 重新调用产品 JS。输出中的 `workflowScriptPath` 必须是当前 candidate 的 `.claude/workflows/<WORKFLOW_NAME>.js` 绝对路径。非 PASS、candidate 为空、主 Workflow JS 不在标准路径或 evidence 文件不存在时必须保持阻断。
+
+### Authoring Spec Integrity
+
+关于 authoring spec 的完整性规则不变：
+
+- `supporting_assets` 只描述需要生成、更新或归档的资产内容。
+- `asset_disposition` 独立描述 update/migrate 时每个现有或目标资产的 `retain | generate | update | archive | remove | defer | not-applicable` 决策。
+- `task_model_policy` 只接受 `agent_task_models` 映射；不要在 authoring spec 中散落模型别名字段。
+
+如果 `authoringSpec` 缺失或需要修改，必须重新调用产品 JS 的 Author 阶段，而不是前台手写。
 
 ## Step 5: Deterministic Validation
 
