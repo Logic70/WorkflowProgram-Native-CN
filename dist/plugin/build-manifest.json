@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-06T16:49:35Z",
+  "generated_at": "2026-06-06T18:15:29Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.9",
-  "source_commit": "9d2b9481b87c540d35a8664c5c8b23aee1255ec5",
+  "source_commit": "d4b23d5ffd03178afe1645d83b663e1782e50c76",
   "source_dirty": true,
   "files": [
     {
@@ -729,8 +729,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "6f13339f9dae9bfc33908e0ef808fe5aeb4d50269859979c3f1e858d7310c49c",
-      "size": 13831
+      "sha256": "3275c5be9da57ee0c07ba0608004dde6bcc1c8d81e86e1d380f7cf97534eb563",
+      "size": 15628
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -754,8 +754,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "8dfba5700e7c36ccff6fd9a726c2a256d9a021e48d23bb1510f49ecfd881f225",
-      "size": 40894
+      "sha256": "7f07083a4387d3f74b931d6639d727b996dbbb4641b9d9730f052926ec98cd28",
+      "size": 41477
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

@@ -50,7 +50,14 @@ This skill only relays JS-returned questions to the user and reinvokes the same
 `workflowprogram-develop.js` with accumulated answers. Do not replace the registered
 Agent with foreground prompt role-play.
 
-调用：
+### Canonical Invocation
+
+Always invoke the product JS through its absolute `scriptPath` and a structured
+`args` object. The user should not need to provide these fields manually; the
+foreground assistant derives `RUN_ID`, `RUN_ROOT`, `TARGET_ROOT`, operation, and
+settled migration decisions before launching the product JS.
+
+Use this shape:
 
 ```text
 Workflow({
@@ -74,10 +81,38 @@ Workflow({
       openQuestions: [],
       confirmedByUser: false
     },
+    migrationDecisions: {
+      keepVerifyValidationPocSeparate: true,
+      flatOutputDir: "outputs/stride-audit",
+      pythonViaSubprocess: true,
+      promptsInline: true,
+      reusableAsRegistered: true,
+      managedApplyAllowed: false
+    },
     applyApproved: false
   }
 })
 ```
+
+Do **not** use a string args payload or dotted keys as the primary path:
+
+```text
+Workflow({
+  name: "workflowprogram-native-cn:workflowprogram-develop",
+  args: "operation=migrate clarification.confirmedByUser=true decisions.flatOutputDir=outputs/stride-audit"
+})
+```
+
+That anti-pattern creates top-level keys such as `"clarification.confirmedByUser"`.
+The product JS expects `args.clarification.confirmedByUser`, so dotted keys can
+cause the workflow to loop at `READY_FOR_CONFIRMATION`.
+
+For existing-workflow migration, resolved `migrationDecisions` are settled input,
+not new user questions. Exploration Agents must not return a resolved decision
+again in `userDecisions`. For example, when `flatOutputDir` is already
+`"outputs/stride-audit"`, a question about whether to keep flat outputs is not a
+blocker. If there is no real blocker, return `trueBlockers: []`; do not write
+placeholder text such as `"No true blockers identified"` in `trueBlockers`.
 
 后续每次调用使用同一个 `RUN_ID`、`RUN_ROOT` 和绝对 `scriptPath`，并累积上一次返回的结构化 evidence。
 
@@ -98,6 +133,10 @@ If the result is `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, or any
 `BLOCKED_*` state, the foreground assistant may only relay questions/blockers or
 collect user confirmation. It must not edit `.claude/**`, `.workflowprogram/design/**`,
 `.workflowprogram/runtime/**`, or commit changes to the target project.
+It must also not edit Claude Code's transient workflow cache files under
+`<CLAUDE_PROJECT>/workflows/scripts/workflowprogram-develop-*.js` to bypass a
+product JS gate. Those files are runtime cache/resume artifacts, not the source
+of truth for WPN fixes.
 
 If the result is `READY_FOR_GENERATION`, `READY_FOR_VALIDATION`, `READY_FOR_SMOKE`,
 or `READY_FOR_APPLY`, the foreground assistant must execute only the controlled

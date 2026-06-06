@@ -163,6 +163,13 @@ part of `workflowprogram-develop.js`, not just operator guidance:
   evidence, acceptance, and boundary lenses are filled from WPN policy and
   existing-asset discovery rules; unresolved explicit `openQuestions` still
   trigger the Agent.
+- The native develop leaf Skill owns a canonical `Workflow({ scriptPath, args:
+  {...} })` example and an explicit anti-pattern for string args and dotted keys.
+  The foreground assistant derives run identifiers and settled migration
+  decisions; users should not hand-author control-plane args.
+- Exploration prompts treat `migrationDecisions` as settled input. Resolved
+  decisions must not be echoed into `userDecisions`, and no-op blocker text such
+  as "No true blockers identified" must be represented as `trueBlockers: []`.
 - D1 open questions are normalized before the Agent call. Resolved or answered
   objects are ignored; unresolved objects without `question` text get a stable
   fallback question and must never surface as `[object Object]`.

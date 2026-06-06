@@ -49,6 +49,8 @@ const migrationExplorationGuidance = [
   'Classify exploration output into findings, constraints, migrationTasks, trueBlockers, userDecisions, sourceOfTruth, and assetDispositionHints.',
   'Expected migration work is not a design blocker: missing target .claude/workflows/<name>.js, stale workflow-spec.yaml, retired .workflowprogram/runtime/, stale managed-files.json, duplicate legacy assets, and no existing Native JS reference are migrationTasks when a current command, Agent, Skill, design document, runtime file, candidate, or user decision still defines behavior.',
   'Only trueBlockers stop Design: unreadable target roots, no usable behavioral source of truth, unresolved user decisions that change topology, unclear write boundaries, or missing required assets with no replacement.',
+  'Resolved migration decisions supplied in requirementSummary.migrationDecisions are settled inputs. Do not return them again in userDecisions. userDecisions is only for unresolved choices that can still change topology, evidence gates, or write boundaries.',
+  'If there is no real blocker, return trueBlockers: []. Do not put placeholder text such as "No true blockers identified" in trueBlockers.',
   'Source-of-truth priority: explicit user decisions, current command or entrypoint behavior, current Agents and Skills, current design metadata, retired runtime behavior, then historical candidates as reference only.',
 ].join('\n')
 const asArray = value => Array.isArray(value) ? value : []
@@ -467,6 +469,8 @@ ${migrationExplorationGuidance}
 
 Resolved migration decisions:
 ${JSON.stringify(requirementSummary.migrationDecisions)}
+
+Treat the resolved migration decisions above as already decided. Do not repeat them in userDecisions. If there are no actual true blockers, return trueBlockers as an empty array.
 
 Return structured JSON only.`,
         withTaskModel('repository-exploration', {

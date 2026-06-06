@@ -19,6 +19,7 @@ LOWLEVEL_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design"
 NATIVE_WORKFLOW_REFERENCE = (
     ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "native-workflow-js.md"
 )
+NATIVE_DEVELOP_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-native-develop" / "SKILL.md"
 LOWLEVEL_EXAMPLES = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "examples"
 NATIVE_WORKFLOW_LLD = ROOT / "docs" / "native-workflow-control-plane-lowlevel-design.md"
 PRODUCT_WORKFLOW_SKELETONS: dict[str, str] = {}
@@ -67,9 +68,11 @@ const source = fs.readFileSync(payload.script, 'utf8').replace('export const met
 const phases = []
 const labels = []
 const agentTypes = []
+const prompts = []
 const queuedAgentResults = [...payload.agentResults]
 const phase = title => phases.push(title)
-const agent = async (_prompt, options) => {
+const agent = async (prompt, options) => {
+  prompts.push(prompt)
   labels.push(options?.label || '')
   agentTypes.push(options?.agentType || null)
   if (queuedAgentResults.length === 0) {
@@ -90,7 +93,7 @@ const workflow = async () => {
 }
 const run = new Function('args', 'phase', 'agent', 'parallel', 'pipeline', 'workflow', `return (async () => { ${source}\n })()`)
 run(payload.args, phase, agent, parallel, pipeline, workflow)
-  .then(result => console.log(JSON.stringify({ result, phases, labels, agentTypes })))
+  .then(result => console.log(JSON.stringify({ result, phases, labels, agentTypes, prompts })))
   .catch(error => {
     console.error(error.stack || String(error))
     process.exit(1)
@@ -108,6 +111,7 @@ run(payload.args, phase, agent, parallel, pipeline, workflow)
         ),
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
@@ -2221,6 +2225,57 @@ def test_develop_create_still_asks_for_missing_lenses() -> None:
     assert execution["agentTypes"] == ["workflowprogram-native-cn:requirement-clarification-lead"]
     # All 7 lenses are missing - the agent should ask about them
     assert len(execution["result"]["questions"]) == 7
+
+
+def test_native_develop_skill_documents_canonical_structured_invocation() -> None:
+    """The leaf skill should steer the foreground model toward structured args,
+    not string args or dotted-key examples."""
+    text = NATIVE_DEVELOP_SKILL.read_text(encoding="utf-8")
+
+    assert "## Step 2: Launch Or Reinvoke Product JS" in text
+    assert "### Canonical Invocation" in text
+    assert 'scriptPath: "<PLUGIN_ROOT>/workflows/workflowprogram-develop.js"' in text
+    assert "migrationDecisions" in text
+    assert 'args: "operation=migrate clarification.confirmedByUser=true decisions.flatOutputDir=outputs/stride-audit"' in text
+    assert "dotted keys can" in text
+    assert "READY_FOR_CONFIRMATION" in text
+    assert "workflowprogram-develop-*.js" in text
+
+
+def test_develop_migrate_exploration_prompt_treats_migration_decisions_as_settled() -> None:
+    """Migration prompts should teach exploration agents by example that resolved
+    decisions are not blockers and no-op blocker text belongs in an empty array."""
+    exploration = {
+        "status": "BLOCKED",
+        "findings": [],
+        "constraints": [],
+        "migrationTasks": [],
+        "trueBlockers": ["No usable behavioral source of truth exists."],
+        "userDecisions": [],
+        "sourceOfTruth": [],
+        "assetDispositionHints": [],
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            operation="migrate",
+            migrationDecisions={
+                "keepVerifyValidationPocSeparate": True,
+                "flatOutputDir": "outputs/stride-audit",
+            },
+        ),
+        agent_results=[exploration, exploration],
+    )
+
+    prompt = execution["prompts"][0]
+    assert "Resolved migration decisions:" in prompt
+    assert '"flatOutputDir":"outputs/stride-audit"' in prompt
+    assert "Do not return them again in userDecisions" in prompt
+    assert "Do not repeat them in userDecisions" in prompt
+    assert "return trueBlockers as an empty array" in prompt
+    assert "No true blockers identified" in prompt
 
 
 def test_develop_native_workflow_blocks_review_required_revisions() -> None:
