@@ -2385,6 +2385,132 @@ def test_develop_migrate_continues_when_exploration_reports_only_migration_tasks
     assert execution["labels"][-1] == "workflowprogram-develop:author"
 
 
+def test_develop_migrate_does_not_block_resolved_asset_disposition_questions() -> None:
+    """Exploration may echo asset-disposition confirmations, but migrate design
+    should continue when migrationDecisions or assetDispositionHints already
+    settle them."""
+    exploration = {
+        "status": "PASS",
+        "findings": ["Existing FreeSTRIDE assets are readable."],
+        "constraints": ["Do not write target files directly."],
+        "migrationTasks": [
+            "Remove legacy .agents/ after controlled apply.",
+            "Merge stride-ui-verifier behavior into the report phase.",
+        ],
+        "trueBlockers": [],
+        "userDecisions": [
+            "How should orphan .agents/skills/stride-input-parser/SKILL.md be handled?",
+            "How should .claude/agents/stride-ui-verifier.md be handled if uiVerifierMergedIntoReport=true?",
+        ],
+        "sourceOfTruth": [".claude/commands/stride-audit.md"],
+        "assetDispositionHints": [
+            {
+                "path": ".agents/",
+                "action": "remove",
+                "reason": "removeDotAgentsDir=true settles the legacy duplicate directory.",
+            },
+            {
+                "path": ".claude/agents/stride-ui-verifier.md",
+                "action": "archive",
+                "reason": "uiVerifierMergedIntoReport=true merges behavior into report.",
+                "supportingAssetPath": ".workflowprogram/archive/stride-ui-verifier.md",
+            },
+        ],
+        "blockingIssues": [],
+    }
+    supporting_assets = [
+        {
+            "kind": "workflow",
+            "path": ".claude/workflows/generated-probe.js",
+            "content": "phase('Probe')\nreturn { status: 'PASS' }\n",
+            "reason": "Generated Native Workflow JS target.",
+        },
+        {
+            "kind": "archive",
+            "path": ".workflowprogram/archive/stride-ui-verifier.md",
+            "content": "# Archived stride-ui-verifier\n",
+            "reason": "Archive merged agent behavior.",
+        },
+    ]
+    asset_disposition = [
+        {
+            "path": ".claude/workflows/generated-probe.js",
+            "action": "generate",
+            "reason": "Missing target workflow is the migration deliverable.",
+            "supportingAssetPath": ".claude/workflows/generated-probe.js",
+        },
+        {
+            "path": ".agents/",
+            "action": "remove",
+            "reason": "removeDotAgentsDir=true settles the legacy duplicate directory.",
+        },
+        {
+            "path": ".claude/agents/stride-ui-verifier.md",
+            "action": "archive",
+            "reason": "uiVerifierMergedIntoReport=true merges behavior into report.",
+            "supportingAssetPath": ".workflowprogram/archive/stride-ui-verifier.md",
+        },
+    ]
+    design = pass_design_evidence()
+    design["assetDisposition"] = asset_disposition
+    authoring = {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(
+            supporting_assets=supporting_assets,
+            asset_disposition=asset_disposition,
+        ),
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            operation="migrate",
+            migrationDecisions={
+                "removeDotAgentsDir": True,
+                "uiVerifierMergedIntoReport": True,
+            },
+        ),
+        agent_results=[exploration, exploration, design, pass_review_evidence(), authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert "User decision required" not in json.dumps(execution["result"])
+    assert execution["labels"][-1] == "workflowprogram-develop:author"
+
+
+def test_develop_migrate_still_blocks_uncovered_user_decisions() -> None:
+    exploration = {
+        "status": "PASS",
+        "findings": ["The target project is readable."],
+        "constraints": [],
+        "migrationTasks": [],
+        "trueBlockers": [],
+        "userDecisions": [
+            "Should managed apply be automatic or require a manual approval branch?"
+        ],
+        "sourceOfTruth": [".claude/commands/generated-probe.md"],
+        "assetDispositionHints": [],
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="migrate"),
+        agent_results=[exploration, exploration],
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_DESIGN"
+    assert execution["result"]["blockingIssues"] == [
+        "User decision required: Should managed apply be automatic or require a manual approval branch?",
+        "User decision required: Should managed apply be automatic or require a manual approval branch?",
+    ]
+    assert execution["labels"] == [
+        "workflowprogram-develop:explore:target-context",
+        "workflowprogram-develop:explore:runtime-boundaries",
+    ]
+
+
 def test_develop_migrate_blocks_true_exploration_blockers() -> None:
     exploration = {
         "status": "BLOCKED",

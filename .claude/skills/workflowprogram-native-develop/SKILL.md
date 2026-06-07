@@ -113,6 +113,8 @@ again in `userDecisions`. For example, when `flatOutputDir` is already
 `"outputs/stride-audit"`, a question about whether to keep flat outputs is not a
 blocker. If there is no real blocker, return `trueBlockers: []`; do not write
 placeholder text such as `"No true blockers identified"` in `trueBlockers`.
+Asset-disposition confirmations covered by `assetDispositionHints` or
+`migrationDecisions` are design context, not foreground questions.
 
 后续每次调用使用同一个 `RUN_ID`、`RUN_ROOT` 和绝对 `scriptPath`，并累积上一次返回的结构化 evidence。
 

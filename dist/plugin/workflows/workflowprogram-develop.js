@@ -118,11 +118,72 @@ const decisionText = decision => {
   if (!decision || typeof decision !== 'object') return ''
   return decision.question || decision.prompt || decision.text || decision.id || ''
 }
-const explorationDesignBlockers = (explorations, operation) => {
+const normalizeDecisionToken = value =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+const normalizeDecisionText = value =>
+  String(value || '').toLowerCase().replace(/\\/g, '/')
+const splitDecisionWords = value =>
+  String(value || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+/)
+    .map(word => word.toLowerCase())
+    .filter(word =>
+      word.length >= 4 &&
+      !['true', 'false', 'null', 'none', 'with', 'from', 'into', 'path', 'file'].includes(word)
+    )
+const decisionPathVariants = path => {
+  const normalized = normalizeDecisionText(path).replace(/\/+$/, '')
+  const parts = normalized.split('/').filter(Boolean)
+  return [
+    normalized,
+    normalized.replace(/^\.\//, ''),
+    parts.slice(-1).join('/'),
+    parts.slice(-2).join('/'),
+  ].filter(value => value.length >= 4)
+}
+const isCoveredByAssetDisposition = (text, explorations) => {
+  const haystack = normalizeDecisionText(text)
+  return explorations.some(item =>
+    asArray(item?.assetDispositionHints).some(hint => {
+      if (!dispositionActions.includes(hint?.action)) return false
+      return decisionPathVariants(hint?.path).some(variant => haystack.includes(variant))
+    })
+  )
+}
+const isCoveredByMigrationDecisions = (text, migrationDecisions) => {
+  const compact = normalizeDecisionToken(text)
+  return Object.entries(migrationDecisions || {}).some(([key, value]) => {
+    const keyWords = splitDecisionWords(key)
+    const keyHits = keyWords.filter(word => compact.includes(word)).length
+    if (keyHits >= Math.min(2, keyWords.length) && keyWords.length > 0) return true
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const valueToken = normalizeDecisionToken(value)
+      return valueToken.length >= 4 && compact.includes(valueToken)
+    }
+
+    return false
+  })
+}
+const isNonBlockingMigrationDecision = (decision, requirementSummary, explorations) => {
+  const text = decisionText(decision)
+  if (!nonEmpty(text)) return true
+  if (/no\s+(true\s+)?blockers?\s+identified/i.test(text)) return true
+  if (/all\s+\d*\+?\s*decisions\s+resolved/i.test(text)) return true
+  return (
+    isCoveredByMigrationDecisions(text, requirementSummary?.migrationDecisions) ||
+    isCoveredByAssetDisposition(text, explorations)
+  )
+}
+const explorationDesignBlockers = (explorations, operation, requirementSummary) => {
   if (operation === 'migrate') {
     return explorations.flatMap(item => [
       ...asArray(item?.trueBlockers).filter(nonEmpty),
-      ...asArray(item?.userDecisions).map(decisionText).filter(nonEmpty).map(item => `User decision required: ${item}`),
+      ...asArray(item?.userDecisions)
+        .filter(decision => !isNonBlockingMigrationDecision(decision, requirementSummary, explorations))
+        .map(decisionText)
+        .filter(nonEmpty)
+        .map(item => `User decision required: ${item}`),
     ])
   }
   return explorations
@@ -509,7 +570,7 @@ Return structured JSON only.`,
     ),
   )
 
-  const explorationBlockers = explorationDesignBlockers(explorations, operation)
+  const explorationBlockers = explorationDesignBlockers(explorations, operation, requirementSummary)
   if (explorationBlockers.length > 0) {
     return respond('BLOCKED_DESIGN', {
       blockingIssues: explorationBlockers,

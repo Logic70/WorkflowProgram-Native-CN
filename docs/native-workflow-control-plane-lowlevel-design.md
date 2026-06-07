@@ -170,6 +170,11 @@ part of `workflowprogram-develop.js`, not just operator guidance:
 - Exploration prompts treat `migrationDecisions` as settled input. Resolved
   decisions must not be echoed into `userDecisions`, and no-op blocker text such
   as "No true blockers identified" must be represented as `trueBlockers: []`.
+- The D3 exploration gate deterministically normalizes migrate-mode
+  `userDecisions`: entries already covered by `migrationDecisions` or by
+  `assetDispositionHints` are treated as non-blocking confirmations, while
+  uncovered topology, evidence-gate, or write-boundary decisions still block
+  Design.
 - D1 open questions are normalized before the Agent call. Resolved or answered
   objects are ignored; unresolved objects without `question` text get a stable
   fallback question and must never surface as `[object Object]`.
@@ -288,6 +293,12 @@ export const meta = {
 - `userDecisions`：会改变拓扑、边界或副作用的未决用户决策。
 - `sourceOfTruth`：当前行为真源。
 - `assetDispositionHints`：`retain | generate | update | archive | remove | defer | not-applicable` 建议。
+
+在 `operation=migrate` 下，`userDecisions` 会先经过确定性归一化。若文本已经被
+`requirementSummary.migrationDecisions` 里的已决事项覆盖，或能匹配当前
+`assetDispositionHints` 中的路径和处置动作，则视为非阻塞确认项，继续传入
+Design/Author 作为上下文；只有未被已决事项或资产处置建议覆盖、且仍会改变拓扑、
+证据 gate 或写入边界的 `userDecisions` 才能触发 `BLOCKED_DESIGN`。
 
 以下情况在 migrate 下默认为 `migrationTasks`，不得直接导致 `BLOCKED_DESIGN`：
 

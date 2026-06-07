@@ -194,8 +194,8 @@ M7 是验证方向的过渡切片，不是最终稳态。它仍把澄清、JSON 
 准出条件：
 
 - `workflowprogram-develop.js` 的探索 schema 包含 `migrationTasks`、`trueBlockers`、`userDecisions`、`sourceOfTruth` 和 `assetDispositionHints`。
-- migrate 模式下仅 `trueBlockers` 或未决 `userDecisions` 阻断 Design；migrationTasks 会被传入 Design/Author。
-- 单元测试覆盖 missing target workflow、stale legacy assets 等 expected migration work 不阻断，以及 true blocker 仍阻断。
+- migrate 模式下仅 `trueBlockers` 或未被 `migrationDecisions` / `assetDispositionHints` 覆盖的未决 `userDecisions` 阻断 Design；migrationTasks 和已决资产处置确认项会被传入 Design/Author。
+- 单元测试覆盖 missing target workflow、stale legacy assets、已决资产处置确认项等 expected migration work 不阻断，以及 true blocker 仍阻断。
 - `workflowprogram-highlevel-design` 与 `workflowprogram-lowlevel-design` 都能索引实现级正反例。
 
 ### M10A. 自动化已完成、待 M11 完整交互式覆盖：Validate 与 Audit Native 化
@@ -511,7 +511,7 @@ M11 v1 已完成：
 | 需求澄清角色被 prompt-only 伪调用 | M19 抽取 `requirement-clarification-lead` 注册 Agent 和 shared lens definition；smoke/evaluator 检查 JSONL `attributionAgent`，validator 检查 lens drift 和缺失映射 |
 | 迁移已有工作流时反复要求用户重申可推导事实 | `operation=migrate` 在 D1 前用迁移默认 lens 补齐缺失澄清：subprocess 合约从现有资产探索，旧 runtime 默认 retained/deferred 为非活动资产，平台策略不再作为用户问题 |
 | 前台模型把结构化 args 写成字符串或 dotted key | Leaf Skill 增加 canonical invocation 正例和反例：必须使用绝对 `scriptPath` 与结构化 `args` 对象；真实用户只表达迁移目标，控制参数由入口适配层派生 |
-| 探索 Agent 把已决迁移事项重复标记为 userDecision | Explore prompt 明确 `migrationDecisions` 是 settled input；已决事项不得进入 `userDecisions`，无真实 blocker 时必须返回 `trueBlockers: []` |
+| 探索 Agent 把已决迁移事项重复标记为 userDecision | Explore prompt 明确 `migrationDecisions` 是 settled input；JS gate 还会把已被 `migrationDecisions` 或 `assetDispositionHints` 覆盖的 `userDecisions` 归为非阻塞确认项；无真实 blocker 时必须返回 `trueBlockers: []` |
 | 前台模型自由写 JS authoring spec | M18 后由 `workflowprogram-develop:author` 专用 Agent 产出 `authoringSpec`，前台只保存完整 Workflow result 并运行 `workflowprogram-continue.py`；runner 原样落盘 handoff/spec，generator 校验 handoff/spec 等价 |
 | 正则静态 validator 漏掉 JS module 语法错误 | M18 后静态 validation 包含 ESM module parse、唯一 meta export 和基础 pipeline/parallel 形态负例 |
 | 把 M7 原型或 M8 分发骨架误认为最终控制面 | 文档明确 M7 是过渡切片；M8 只分发五个入口并验证路径启动；M9-M10C 才迁移 WorkflowProgram 自身业务控制流 |
