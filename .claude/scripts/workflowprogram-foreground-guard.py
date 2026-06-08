@@ -610,20 +610,31 @@ def unwrap_result_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def load_workflow_record_input(args: argparse.Namespace) -> dict[str, Any]:
+    if args.workflow_result_json:
+        return json.loads(args.workflow_result_json)
+    if args.workflow_task_output:
+        return load_json_file(Path(args.workflow_task_output))
+    if args.workflow_result == "-":
+        return json.loads(sys.stdin.read())
+    return load_json_file(Path(args.workflow_result))
+
+
+def latest_workflow_result_path(run_root: Path) -> Path:
+    return run_root / "outputs" / "stages" / "latest-workflow-result.json"
+
+
 def command_record(args: argparse.Namespace) -> int:
     target_root = Path(args.target_root).resolve()
     run_root = Path(args.run_root).resolve()
-    if args.workflow_result_json:
-        result = json.loads(args.workflow_result_json)
-    elif args.workflow_result == "-":
-        result = json.loads(sys.stdin.read())
-    else:
-        result = load_json_file(Path(args.workflow_result))
+    result = load_workflow_record_input(args)
     if not isinstance(result, dict):
         raise ValueError("Workflow result must be a JSON object.")
     result = unwrap_result_envelope(result)
     if not isinstance(result, dict):
         raise ValueError("Workflow result after unwrapping must be a JSON object.")
+    workflow_result_path = latest_workflow_result_path(run_root)
+    write_json(workflow_result_path, result)
     recorded_transcript = Path(args.transcript_path).resolve() if args.transcript_path else None
     state = build_state(
         target_root,
@@ -634,7 +645,18 @@ def command_record(args: argparse.Namespace) -> int:
     )
     write_json(state_path_for_target(target_root), state)
     if args.json:
-        print(json.dumps({"status": "PASS", "statePath": str(state_path_for_target(target_root)), "state": state}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": "PASS",
+                    "statePath": str(state_path_for_target(target_root)),
+                    "workflowResultPath": str(workflow_result_path),
+                    "state": state,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     return 0
 
 
@@ -681,6 +703,7 @@ def parse_args() -> argparse.Namespace:
     record.add_argument("--run-root", required=True)
     record.add_argument("--workflow-result", default="-")
     record.add_argument("--workflow-result-json", default="")
+    record.add_argument("--workflow-task-output", default="")
     record.add_argument("--transcript-path", default="")
     record.add_argument("--session-id", default="")
     record.add_argument("--json", action="store_true")

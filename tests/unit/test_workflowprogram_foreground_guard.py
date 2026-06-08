@@ -38,6 +38,48 @@ def record_state(target: Path, run_root: Path, result: dict) -> dict:
     return json.loads(completed.stdout)
 
 
+def test_record_accepts_workflow_task_output_and_persists_latest_result(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    task_output = tmp_path / "task.output"
+    task_output.write_text(
+        json.dumps(
+            {
+                "summary": "Workflow completed",
+                "result": {
+                    "status": "READY_FOR_CONFIRMATION",
+                    "workflow": "workflowprogram-develop",
+                    "runId": "migration-001",
+                    "nextAction": "REINVOKE_WITH_CONFIRMATION",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = run_guard(
+        "record",
+        "--target-root",
+        str(target),
+        "--run-root",
+        str(run_root),
+        "--workflow-task-output",
+        str(task_output),
+        "--json",
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    payload = json.loads(completed.stdout)
+    workflow_result_path = Path(payload["workflowResultPath"])
+    assert workflow_result_path == run_root.resolve() / "outputs" / "stages" / "latest-workflow-result.json"
+    latest = json.loads(workflow_result_path.read_text(encoding="utf-8"))
+    assert latest["status"] == "READY_FOR_CONFIRMATION"
+    assert latest["workflow"] == "workflowprogram-develop"
+    assert "result" not in latest
+    state = json.loads((target / ".workflowprogram" / "session-state.json").read_text(encoding="utf-8"))
+    assert state["workflowStatus"] == "READY_FOR_CONFIRMATION"
+
+
 def test_guard_blocks_direct_write_to_managed_target_after_blocked_state(tmp_path: Path) -> None:
     target = tmp_path / "target"
     run_root = tmp_path / "run"

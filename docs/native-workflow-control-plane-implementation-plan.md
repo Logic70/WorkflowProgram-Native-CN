@@ -454,6 +454,11 @@ Design changes:
   so an interrupted old run cannot redirect the foreground assistant into an old
   `runRoot`; unbound states apply only to recent commands that explicitly
   reference the same `runRoot` or `runId`.
+- Guard `record` can consume Claude Code Workflow task output directly through
+  `--workflow-task-output`, unwrap `{result: {...}}`, create
+  `RUN_ROOT/outputs/stages/latest-workflow-result.json`, and then update
+  `.workflowprogram/session-state.json`. The foreground assistant must not
+  create that file with `Write` as a recovery path.
 - Leaf entry skills derive `targetRoot`, `runId`, `runRoot`, operation, and
   product `scriptPath` from read-only context only; they do not instruct the
   foreground assistant to run `route-native-control-plane.py` or create run
@@ -484,6 +489,9 @@ Implementation tasks:
 - Add stale-state regression tests for WPN transcripts: old unbound states fall
   back to no-state product-Workflow blocking, recent unbound states without a run
   reference also fall back to no-state, and same-run references remain active.
+- Add task-output record tests so `workflowprogram-foreground-guard.py record`
+  owns `latest-workflow-result.json` creation after background Workflow
+  completion.
 - Update `workflowprogram-native-develop/SKILL.md` and its static test so the
   first step is side-effect-free product Workflow invocation preparation.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:

@@ -2247,6 +2247,9 @@ def test_native_develop_skill_documents_canonical_structured_invocation() -> Non
     assert "dotted keys can" in text
     assert "READY_FOR_CONFIRMATION" in text
     assert "workflowprogram-develop-*.js" in text
+    assert "--workflow-task-output <WORKFLOW_TASK_OUTPUT_FILE>" in text
+    assert "Never recover from a missing" in text
+    assert "foreground assistant must not create that file manually" in text
 
 
 def test_primary_develop_skill_derives_first_invocation_args() -> None:

@@ -134,15 +134,24 @@ Asset-disposition confirmations covered by `assetDispositionHints` or
 ## Foreground Guard Protocol
 
 After every `Workflow({ scriptPath, args })` return, persist the exact returned
-envelope before taking any next action:
+envelope before taking any next action. When Claude Code reports a completed
+background Workflow with `<output-file>...</output-file>`, pass that task output
+file directly to the guard. Do not create `RUN_ROOT`, do not use `Write`, and do
+not handwrite `latest-workflow-result.json` first; the guard creates the stage
+file and session state itself.
 
 ```text
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-foreground-guard.py record \
   --target-root <TARGET_ROOT> \
   --run-root <RUN_ROOT> \
-  --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json \
+  --workflow-task-output <WORKFLOW_TASK_OUTPUT_FILE> \
   --json
 ```
+
+If a task output file is not available, pass the returned JSON with
+`--workflow-result-json '<JSON>'` or through stdin. Never recover from a missing
+result file by manually creating directories or writing the result with the
+`Write` tool.
 
 If the result is `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, or any
 `BLOCKED_*` state, the foreground assistant may only relay questions/blockers or
@@ -199,11 +208,13 @@ M15 已将 product handoff 作为主路径；M18 收紧为确定性 continuation
 workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/workflowprogram-foreground-guard.py record \
   --target-root <TARGET_ROOT> \
   --run-root <RUN_ROOT> \
-  --workflow-result <RUN_ROOT>/outputs/stages/latest-workflow-result.json \
+  --workflow-task-output <WORKFLOW_TASK_OUTPUT_FILE> \
   --json
 ```
 
 Guard 的 `record` 子命令现在会 unwrap `{result: {...}}` envelopes——当 Workflow 工具将 JS 结果包装在 `result` 键中时，guard 提取内部对象再持久化状态。
+It also writes `<RUN_ROOT>/outputs/stages/latest-workflow-result.json`, so the
+foreground assistant must not create that file manually.
 
 ### 4b. Run Deterministic Continuation
 

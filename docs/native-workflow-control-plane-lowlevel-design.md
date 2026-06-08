@@ -239,6 +239,13 @@ the plugin `PreToolUse` hook:
   the product `Workflow({ scriptPath, args })` call. They derive initial args
   from read-only context and report `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE` if the
   host session does not expose the Workflow tool;
+- after a product Workflow returns, the foreground assistant records the result
+  by calling `workflowprogram-foreground-guard.py record --workflow-task-output
+  <WORKFLOW_TASK_OUTPUT_FILE>` when Claude Code provides a task output file. The
+  guard unwraps `{result: {...}}`, writes
+  `<RUN_ROOT>/outputs/stages/latest-workflow-result.json`, and updates
+  `.workflowprogram/session-state.json`; the foreground assistant must not
+  create that file with `Write` or shell directory creation first;
 - controlled generation, validation, smoke, and apply remain explicit scripts
   selected by the product JS `nextAction`.
 - generated target-runtime wrappers delegate shared plugin scripts through a
