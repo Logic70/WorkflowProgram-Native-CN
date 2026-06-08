@@ -208,7 +208,8 @@ Foreground bypass is controlled by `workflowprogram-foreground-guard.py` plus
 the plugin `PreToolUse` hook:
 
 - `record` persists the latest product JS envelope to
-  `TARGET_ROOT/.workflowprogram/session-state.json`;
+  `TARGET_ROOT/.workflowprogram/session-state.json`, including `updatedAt` and
+  optional `transcriptPath` / `sessionId` binding when available;
 - `check` blocks direct foreground writes to managed target assets when WPN is in
   `NEEDS_USER_INPUT`, `READY_FOR_CONFIRMATION`, `BLOCKED_*`, or any state that
   requires a controlled script;
@@ -228,6 +229,9 @@ the plugin `PreToolUse` hook:
   transcripts allow read-only shell probes but block foreground file edits,
   shell writes, and side-effect scripts. Creating run directories, route output
   files, candidate assets, or managed manifests is product Workflow ownership;
+- stale unbound guard states are ignored for fresh WPN transcripts. A historical
+  `.workflowprogram/session-state.json` must not hijack a new migration request
+  into an old `runRoot`; recent or transcript/session-bound states remain active;
 - leaf entry skills must not instruct the foreground assistant to run
   `route-native-control-plane.py`, create `RUN_ROOT`, or write route files before
   the product `Workflow({ scriptPath, args })` call. They derive initial args

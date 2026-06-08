@@ -449,6 +449,10 @@ Design changes:
   block file edits, shell writes, and side-effect scripts so the foreground
   assistant cannot create run roots or route-output files as a substitute for
   invoking the product Workflow.
+- Guard state records `updatedAt` plus optional transcript/session binding. Fresh
+  WPN requests ignore stale unbound `.workflowprogram/session-state.json` files
+  so an interrupted old run cannot redirect the foreground assistant into an old
+  `runRoot`.
 - Leaf entry skills derive `targetRoot`, `runId`, `runRoot`, operation, and
   product `scriptPath` from read-only context only; they do not instruct the
   foreground assistant to run `route-native-control-plane.py` or create run
@@ -476,6 +480,8 @@ Implementation tasks:
 - Keep `workflowprogram-foreground-guard.py record` / `assert-commit` commands
   allowed before state exists and write block reasons to stderr so Claude Code
   can show a recoverable message instead of a generic hook error.
+- Add stale-state regression tests for WPN transcripts: old unbound states fall
+  back to no-state product-Workflow blocking, while recent states remain active.
 - Update `workflowprogram-native-develop/SKILL.md` and its static test so the
   first step is side-effect-free product Workflow invocation preparation.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:

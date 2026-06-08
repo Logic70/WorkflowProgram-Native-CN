@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -25,6 +26,7 @@ from typing import Any, Iterable
 STATE_RELATIVE_PATH = Path(".workflowprogram") / "session-state.json"
 SCHEMA_NAME = "workflowprogram-foreground-guard-state"
 SCHEMA_VERSION = 1
+MAX_UNBOUND_STATE_AGE_SECONDS = 30 * 60
 
 MANAGED_PREFIXES = (
     ".claude/",
@@ -130,6 +132,10 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def path_identity(value: str | os.PathLike[str] | None) -> str:
     if not value:
         return ""
@@ -190,13 +196,23 @@ def extract_apply_manifest(result: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def build_state(target_root: Path, run_root: Path, result: dict[str, Any]) -> dict[str, Any]:
+def build_state(
+    target_root: Path,
+    run_root: Path,
+    result: dict[str, Any],
+    *,
+    recorded_transcript_path: Path | None = None,
+    recorded_session_id: str = "",
+) -> dict[str, Any]:
     status = str(result.get("status") or "UNKNOWN")
     candidate_refs = result.get("candidateRefs") if isinstance(result.get("candidateRefs"), list) else []
     apply_manifest = extract_apply_manifest(result)
     return {
         "schemaName": SCHEMA_NAME,
         "schemaVersion": SCHEMA_VERSION,
+        "updatedAt": now_utc_iso(),
+        "transcriptPath": str(recorded_transcript_path.resolve()) if recorded_transcript_path else "",
+        "sessionId": recorded_session_id,
         "targetRoot": str(target_root.resolve()),
         "runRoot": str(run_root.resolve()),
         "workflow": result.get("workflow") or "workflowprogram-develop",
@@ -229,6 +245,54 @@ def find_state_from_path(start: Path) -> tuple[Path, dict[str, Any]] | None:
             except (OSError, json.JSONDecodeError):
                 return None
     return None
+
+
+def parse_utc_iso(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def state_is_recent(state: dict[str, Any]) -> bool:
+    updated = parse_utc_iso(state.get("updatedAt"))
+    if updated is None:
+        return False
+    age = (datetime.now(timezone.utc) - updated).total_seconds()
+    return 0 <= age <= MAX_UNBOUND_STATE_AGE_SECONDS
+
+
+def state_applies_to_payload(payload: dict[str, Any], state: dict[str, Any]) -> bool:
+    if not has_wpn_intent(payload):
+        return True
+    payload_session_id = str(payload.get("sessionId") or "").strip()
+    state_session_id = str(state.get("sessionId") or "").strip()
+    if payload_session_id and state_session_id:
+        return payload_session_id == state_session_id
+
+    payload_transcript = transcript_path(payload)
+    state_transcript = str(state.get("transcriptPath") or "").strip()
+    if payload_transcript and state_transcript:
+        return path_identity(payload_transcript) == path_identity(state_transcript)
+
+    # Legacy states have no transcript/session binding. Treat only recent states
+    # as active so old interrupted runs do not hijack a fresh WPN request.
+    return state_is_recent(state)
+
+
+def current_state_from_found(payload: dict[str, Any], found: tuple[Path, dict[str, Any]] | None) -> dict[str, Any] | None:
+    if not found:
+        return None
+    state = found[1]
+    return state if state_applies_to_payload(payload, state) else None
 
 
 def hook_payload() -> dict[str, Any]:
@@ -469,7 +533,7 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
     if command_is_guard(command):
         return allow("guard-command")
     found = find_state_from_path(cwd)
-    state = found[1] if found else None
+    state = current_state_from_found(payload, found)
     if not state:
         if has_wpn_intent(payload) and (
             command_writes(command)
@@ -533,7 +597,14 @@ def command_record(args: argparse.Namespace) -> int:
     result = unwrap_result_envelope(result)
     if not isinstance(result, dict):
         raise ValueError("Workflow result after unwrapping must be a JSON object.")
-    state = build_state(target_root, run_root, result)
+    recorded_transcript = Path(args.transcript_path).resolve() if args.transcript_path else None
+    state = build_state(
+        target_root,
+        run_root,
+        result,
+        recorded_transcript_path=recorded_transcript,
+        recorded_session_id=args.session_id,
+    )
     write_json(state_path_for_target(target_root), state)
     if args.json:
         print(json.dumps({"status": "PASS", "statePath": str(state_path_for_target(target_root)), "state": state}, ensure_ascii=False, indent=2))
@@ -551,11 +622,11 @@ def command_check(_: argparse.Namespace) -> int:
         for raw_path in paths:
             found = find_state_from_path(Path(raw_path))
             if found:
-                state = found[1]
+                state = current_state_from_found(payload, found)
                 break
         if not state:
             found = find_state_from_path(Path(str(payload.get("cwd") or os.getcwd())))
-            state = found[1] if found else None
+            state = current_state_from_found(payload, found)
         return check_file_tool(payload, state)
     if name in {"Bash", "PowerShell", "shell_command", "Shell"}:
         return check_bash_tool(payload)
@@ -583,6 +654,8 @@ def parse_args() -> argparse.Namespace:
     record.add_argument("--run-root", required=True)
     record.add_argument("--workflow-result", default="-")
     record.add_argument("--workflow-result-json", default="")
+    record.add_argument("--transcript-path", default="")
+    record.add_argument("--session-id", default="")
     record.add_argument("--json", action="store_true")
 
     check = sub.add_parser("check", help="Check one Claude Code PreToolUse hook payload from stdin")

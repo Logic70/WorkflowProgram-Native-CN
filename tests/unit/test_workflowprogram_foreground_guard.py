@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -222,6 +223,76 @@ def test_guard_allows_record_command_before_wpn_state(tmp_path: Path) -> None:
     )
 
     assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_ignores_stale_unbound_state_for_new_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    run_root = target / ".workflowprogram" / "runs" / "old"
+    run_root.mkdir(parents=True)
+    state = record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_GENERATION",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )["state"]
+    state["updatedAt"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    state["transcriptPath"] = ""
+    state["sessionId"] = ""
+    (target / ".workflowprogram" / "session-state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "mkdir -p .workflowprogram/runs/new/outputs/stages",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "must launch the product Workflow" in payload["reason"]
+
+
+def test_guard_keeps_recent_unbound_state_active(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    run_root = target / ".workflowprogram" / "runs" / "active"
+    run_root.mkdir(parents=True)
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_GENERATION",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "mkdir -p .workflowprogram/runs/new/outputs/stages",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "current WorkflowProgram state" in payload["reason"]
 
 
 def test_guard_blocks_file_write_before_wpn_state(tmp_path: Path) -> None:
