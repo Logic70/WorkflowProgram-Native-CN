@@ -1,6 +1,6 @@
 ---
 name: workflowprogram-native-develop
-description: Design or update a Claude Code Native Workflow JS control plane for the current target project
+description: Use for WPN / WorkflowProgram Native requests that create, update, migrate, or refactor a Claude Code Native Workflow JS control plane; must launch product Workflow({scriptPath,args}) before any foreground Agent or direct write.
 version: 1.1.0
 ---
 
@@ -15,6 +15,17 @@ version: 1.1.0
 - 为 Native Workflow JS 按需增加 reusable Skill、Agent、领域脚本或 authoring metadata
 
 ## Core Rules
+
+- If the user request says WPN, WorkflowProgram Native, native workflow
+  migration, migrate an existing workflow, or refactor workflow assets, this
+  skill is a control-plane launcher. The first substantive action must be the
+  product `Workflow({ scriptPath: "<PLUGIN_ROOT>/workflows/workflowprogram-develop.js", args })`
+  invocation after deriving roots and operation. Do not start with a generic
+  Agent exploration pass that can complete the migration in the foreground.
+- Foreground Agent/Read/Bash may gather only the minimum context needed to
+  derive `targetRoot`, `runId`, `runRoot`, and `operation`. They must not write
+  `.claude/**`, `.workflowprogram/design/**`, `.workflowprogram/runtime/**`,
+  `.workflowprogram/runs/**`, or `.workflowprogram/managed-files.json`.
 
 - `.claude/workflows/<name>.js` 是目标工作流执行真源。
 - 默认只生成一个 Native Workflow JS；Skill、Agent、脚本、`.workflowprogram/design/` 和可选 `workflow-spec.yaml` 必须由需求证明后显式声明。

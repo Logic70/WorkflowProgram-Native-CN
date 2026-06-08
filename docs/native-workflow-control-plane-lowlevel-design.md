@@ -214,8 +214,19 @@ the plugin `PreToolUse` hook:
   requires a controlled script;
 - shell commits are allowed only after final `PASS` with
   `deliveryMode=managed-apply` and an `applyManifest` with entries;
+- shell commands are treated as foreground writes when they reference managed
+  target paths and contain embedded writer APIs such as Python
+  `open(..., 'w')`, `Path.write_text`, Node `fs.writeFile*`, PowerShell
+  `Set-Content`/`Add-Content`/`Out-File`, or shell `tee`/`touch`/`mkdir`.
+  Read-only probes such as `open(...).read()`, `read_text`, `rg`, `cat`, and
+  writes under the active `runRoot` candidate tree remain allowed;
 - controlled generation, validation, smoke, and apply remain explicit scripts
   selected by the product JS `nextAction`.
+- generated target-runtime wrappers delegate shared plugin scripts through a
+  cross-platform plugin Python launcher: POSIX hosts keep using
+  `bin/workflowprogram-python`, while Windows hosts call `sys.executable`,
+  set `CLAUDE_PLUGIN_ROOT` / `CLAUDE_PLUGIN_DATA`, bootstrap plugin-local
+  `site-packages` when needed, and prepend that directory to `PYTHONPATH`.
 
 ### 5.2 其他产品 workflow
 

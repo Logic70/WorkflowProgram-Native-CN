@@ -53,9 +53,28 @@ WRITE_COMMAND_PATTERNS = (
     r"\bcopy-item\b",
     r"\bremove-item\b",
     r"\bset-content\b",
+    r"\badd-content\b",
     r"\bnew-item\b",
     r"\bout-file\b",
+    r"\btouch\b",
+    r"\bmkdir\b",
+    r"\btee\b",
     r">",
+)
+
+EMBEDDED_WRITE_PATTERNS = (
+    r"\bopen\s*\([^)]*,\s*['\"][^'\"]*[wax+][^'\"]*['\"]",
+    r"\.write_text\s*\(",
+    r"\.write_bytes\s*\(",
+    r"\bwrite_text\s*\(",
+    r"\bwrite_bytes\s*\(",
+    r"\bwriteFile(?:Sync)?\s*\(",
+    r"\bappendFile(?:Sync)?\s*\(",
+    r"\bcreateWriteStream\s*\(",
+    r"\bSet-Content\b",
+    r"\bAdd-Content\b",
+    r"\bOut-File\b",
+    r"\bNew-Item\b",
 )
 
 CONTROLLED_COMMANDS_BY_STATUS = {
@@ -251,6 +270,41 @@ def command_writes(command: str) -> bool:
     return any(re.search(pattern, lowered) for pattern in WRITE_COMMAND_PATTERNS)
 
 
+def command_embedded_writer(command: str) -> bool:
+    return any(re.search(pattern, command, re.IGNORECASE) for pattern in EMBEDDED_WRITE_PATTERNS)
+
+
+def command_path_literals(command: str) -> Iterable[str]:
+    """Return command string literals/tokens that may be filesystem paths.
+
+    This intentionally stays conservative: it only extracts substrings that
+    mention WorkflowProgram-managed prefixes, so normal shell arguments and
+    natural-language prompt text do not become path candidates.
+    """
+    normalized = command.replace("\\", "/")
+    quoted = re.findall(r"""['"]([^'"]*(?:\.claude|\.workflowprogram)[^'"]*)['"]""", normalized)
+    for item in quoted:
+        yield item
+    for item in re.findall(r"""(?<![\w.-])((?:[A-Za-z]:)?[^\s'"`<>|;&]*(?:\.claude|\.workflowprogram)[^\s'"`<>|;&]*)""", normalized):
+        yield item.rstrip("),]")
+
+
+def command_writes_managed_target(command: str, cwd: Path, state: dict[str, Any]) -> bool:
+    if not command_embedded_writer(command):
+        return False
+    target_root = Path(str(state.get("targetRoot") or ""))
+    for raw_path in command_path_literals(command):
+        path = Path(raw_path)
+        if not path.is_absolute():
+            if raw_path.startswith((".claude/", ".workflowprogram/")):
+                path = target_root / raw_path
+            else:
+                path = cwd / raw_path
+        if is_managed_target_path(path, state):
+            return True
+    return False
+
+
 def command_has_known_side_effect(command: str) -> bool:
     return any(token in command for token in SIDE_EFFECT_COMMAND_TOKENS)
 
@@ -338,7 +392,11 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
             return allow("managed-apply-commit")
         return block("Git commit is allowed only after PASS with managed-apply evidence and apply manifest.", state)
     status = str(state.get("workflowStatus") or "")
-    if (command_writes(command) or command_has_known_side_effect(command)) and not command_is_controlled_for_status(command, status):
+    if (
+        command_writes(command)
+        or command_has_known_side_effect(command)
+        or command_writes_managed_target(command, cwd, state)
+    ) and not command_is_controlled_for_status(command, status):
         return block(
             "Foreground shell writes are blocked for the current WorkflowProgram state; follow nextAction instead.",
             state,

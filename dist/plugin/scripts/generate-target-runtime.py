@@ -173,7 +173,40 @@ def resolve_plugin_root(explicit: str) -> Path:
     raise RuntimeError("target runtime requires --plugin-root or CLAUDE_PLUGIN_ROOT")
 
 
+def _prepare_windows_plugin_env(plugin_root: Path) -> None:
+    if sys.platform != "win32":
+        return
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    plugin_data = Path(os.environ.get("CLAUDE_PLUGIN_DATA", "").strip() or plugin_root / ".plugin-data")
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(plugin_data)
+    site_packages = plugin_data / "python" / "site-packages"
+    bootstrap_state = plugin_data / "python" / "bootstrap-state.json"
+    if not site_packages.is_dir() or not bootstrap_state.is_file():
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(plugin_root / "scripts" / "bootstrap-python-runtime.py"),
+                "--plugin-root",
+                str(plugin_root),
+                "--plugin-data",
+                str(plugin_data),
+                "--quiet",
+            ],
+            capture_output=True, check=False,
+        )
+        if completed.returncode != 0 and not site_packages.is_dir():
+            raise RuntimeError("plugin-local Python bootstrap failed")
+    if site_packages.is_dir():
+        site_str = str(site_packages)
+        current = os.environ.get("PYTHONPATH", "")
+        entries = [site_str] + [item for item in current.split(os.pathsep) if item and item != site_str]
+        os.environ["PYTHONPATH"] = os.pathsep.join(entries)
+
+
 def plugin_python(plugin_root: Path) -> Path:
+    _prepare_windows_plugin_env(plugin_root)
+    if sys.platform == "win32":
+        return Path(sys.executable)
     return plugin_root / "bin" / "workflowprogram-python"
 
 
@@ -611,7 +644,40 @@ def resolve_plugin_root(explicit: str) -> Path:
     raise RuntimeError("generated workflow runner requires --plugin-root or CLAUDE_PLUGIN_ROOT")
 
 
+def _prepare_windows_plugin_env(plugin_root: Path) -> None:
+    if sys.platform != "win32":
+        return
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    plugin_data = Path(os.environ.get("CLAUDE_PLUGIN_DATA", "").strip() or plugin_root / ".plugin-data")
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(plugin_data)
+    site_packages = plugin_data / "python" / "site-packages"
+    bootstrap_state = plugin_data / "python" / "bootstrap-state.json"
+    if not site_packages.is_dir() or not bootstrap_state.is_file():
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(plugin_root / "scripts" / "bootstrap-python-runtime.py"),
+                "--plugin-root",
+                str(plugin_root),
+                "--plugin-data",
+                str(plugin_data),
+                "--quiet",
+            ],
+            capture_output=True, check=False,
+        )
+        if completed.returncode != 0 and not site_packages.is_dir():
+            raise RuntimeError("plugin-local Python bootstrap failed")
+    if site_packages.is_dir():
+        site_str = str(site_packages)
+        current = os.environ.get("PYTHONPATH", "")
+        entries = [site_str] + [item for item in current.split(os.pathsep) if item and item != site_str]
+        os.environ["PYTHONPATH"] = os.pathsep.join(entries)
+
+
 def plugin_python(plugin_root: Path) -> Path:
+    _prepare_windows_plugin_env(plugin_root)
+    if sys.platform == "win32":
+        return Path(sys.executable)
     return plugin_root / "bin" / "workflowprogram-python"
 
 
@@ -741,7 +807,40 @@ def resolve_plugin_root(explicit: str) -> Path:
     raise RuntimeError("generated workflow state validator requires --plugin-root or CLAUDE_PLUGIN_ROOT")
 
 
+def _prepare_windows_plugin_env(plugin_root: Path) -> None:
+    if sys.platform != "win32":
+        return
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    plugin_data = Path(os.environ.get("CLAUDE_PLUGIN_DATA", "").strip() or plugin_root / ".plugin-data")
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(plugin_data)
+    site_packages = plugin_data / "python" / "site-packages"
+    bootstrap_state = plugin_data / "python" / "bootstrap-state.json"
+    if not site_packages.is_dir() or not bootstrap_state.is_file():
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(plugin_root / "scripts" / "bootstrap-python-runtime.py"),
+                "--plugin-root",
+                str(plugin_root),
+                "--plugin-data",
+                str(plugin_data),
+                "--quiet",
+            ],
+            capture_output=True, check=False,
+        )
+        if completed.returncode != 0 and not site_packages.is_dir():
+            raise RuntimeError("plugin-local Python bootstrap failed")
+    if site_packages.is_dir():
+        site_str = str(site_packages)
+        current = os.environ.get("PYTHONPATH", "")
+        entries = [site_str] + [item for item in current.split(os.pathsep) if item and item != site_str]
+        os.environ["PYTHONPATH"] = os.pathsep.join(entries)
+
+
 def plugin_python(plugin_root: Path) -> Path:
+    _prepare_windows_plugin_env(plugin_root)
+    if sys.platform == "win32":
+        return Path(sys.executable)
     return plugin_root / "bin" / "workflowprogram-python"
 
 

@@ -1,6 +1,6 @@
 ---
 name: workflowprogram-orchestrate
-description: Route natural-language workflow requests for the current project to the correct WorkflowProgram entry skill; 为当前项目设计、审计、迭代、验证 workflow 时优先命中此入口
+description: Route natural-language WPN / WorkflowProgram / workflow design, migration, refactor, audit, iterate, validate, or publish requests to the correct WorkflowProgram entry; must not implement migration with generic foreground Agent/Write/Bash.
 version: 1.0.0
 ---
 
@@ -18,6 +18,16 @@ version: 1.0.0
 - 用户希望把已完成的目标 workflow 发布成 Claude Code marketplace plugin
 
 ## Core Rules
+
+- Natural-language requests that mention WPN, WorkflowProgram Native, migrate an
+  existing workflow, refactor workflow assets, or create/update `.claude`
+  workflow control planes must be routed to `workflowprogram-native-develop` or
+  another product WorkflowProgram leaf before any generic Agent implementation.
+  The foreground assistant is a router and evidence adapter, not the migration
+  author.
+- Do not use a generic Agent to explore and then write `.claude/**`,
+  `.workflowprogram/**`, or `managed-files.json` directly. Route first, then
+  obey the product JS re-entrant state and nextAction.
 
 - 当前工作对象是 `TARGET_ROOT`，即用户当前项目目录。
 - 插件资产来自 `PLUGIN_ROOT`，应按只读资源处理。

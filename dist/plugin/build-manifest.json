@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T10:02:10Z",
+  "generated_at": "2026-06-08T12:55:46Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.17",
-  "source_commit": "e58cf99c30f59e3cdfa19bdd2b3e23b8ca388062",
+  "plugin_version": "0.1.18",
+  "source_commit": "1a5922f977adb0b42da6dc35bd9eb3317e6526f4",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "f513ab73e50b69beca4a3daaa1eced34389f00c2be4bf18c7a9aa3bc79fb9fa7",
+      "sha256": "3f317169cfd12f3d21d94f0b0fabd67ad27f644d246309e951607263b20e9c38",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "f1e8edb459dde5ee1228add51871ae50f6181059dd365196753dcf9b6ba7ed92",
+      "sha256": "0bf70a9ef417c5b6ea2715a555abb50d290ea861f44427ddb70c06a07f6dab0c",
       "size": 548
     },
     {
@@ -234,8 +234,8 @@
     },
     {
       "path": "scripts/generate-target-runtime.py",
-      "sha256": "050e51e336c69e9e046548061c699a276a6a007f5a4101e821ff0db54334fec1",
-      "size": 35190
+      "sha256": "60e06e4a100557c779b290e9e722a87dd84616dcd98770fab59973a6c8e8fdb6",
+      "size": 39555
     },
     {
       "path": "scripts/generate-workflow-lowlevel.py",
@@ -534,8 +534,8 @@
     },
     {
       "path": "scripts/workflowprogram-foreground-guard.py",
-      "sha256": "639d9ef51f2f5eb28204a3d94f50c8ec6019416982a74fcebfa8a219cd929c71",
-      "size": 15964
+      "sha256": "4c1f5880091edfb7d28b24723d590c3b09b4f1a7ebffa15ddc3dec25f8b624a4",
+      "size": 17971
     },
     {
       "path": "skills/commit/SKILL.md",
@@ -729,13 +729,13 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "072dce65450a97cf2445f11302c79540d71f3ec316d0ef20d66ddab7147d74ef",
-      "size": 15765
+      "sha256": "f95f30cbfc85bad9d7769a183d56ef21b21d268553ffd59daa1b1e27a443fd95",
+      "size": 16681
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
-      "sha256": "8b16b7b8992aa5755439cc5ef220e64e8c209236afe216b106364babe043c63e",
-      "size": 5044
+      "sha256": "e4fdc21422a6ba69fbb768ee903a57e3310a5a655318dfed8abc4d91987a354d",
+      "size": 5698
     },
     {
       "path": "skills/workflowprogram-publish/SKILL.md",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -1145,3 +1146,49 @@ def test_publish_state_validator_rejects_stale_latest_marker(tmp_path: Path) -> 
     payload = json.loads(completed.stdout)
     assert payload["status"] == "FAIL"
     assert any("latest marker" in error for error in payload["errors"])
+
+
+def test_generated_entry_wrapper_invokes_with_plugin_root(tmp_path: Path) -> None:
+    """Generated workflow-entry.py invoked with --plugin-root returns PASS on fixture_host."""
+    plugin_root = ROOT / "dist" / "plugin"
+    assert (plugin_root / "scripts" / "validate-workflow-spec.py").exists(), (
+        f"plugin root {plugin_root} missing shared scripts"
+    )
+
+    target = write_target_fixture(tmp_path)
+    spec_path = write_persistent_spec(target)
+    generate_runtime_for_target(target, spec_path)
+
+    entry_path = target / ".workflowprogram" / "runtime" / "workflow-entry.py"
+    run_root = tmp_path / "run-entry"
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_DATA", "PYTHONPATH"}
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(entry_path),
+            "run",
+            "--target-root",
+            str(target),
+            "--run-root",
+            str(run_root),
+            "--plugin-root",
+            str(plugin_root),
+            "--runtime-provider",
+            "fixture_host",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert completed.returncode == 0, (
+        f"exit {completed.returncode}: stderr={completed.stderr!r} stdout={completed.stdout!r}"
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "PASS", f"status={payload.get('status')!r}: {payload}"

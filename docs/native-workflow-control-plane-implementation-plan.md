@@ -438,6 +438,10 @@ Design changes:
   domain words such as "security audit".
 - Foreground guard state plus `PreToolUse` hook blocks direct writes to managed
   target assets and blocks commits until `PASS` + `managed-apply` + manifest.
+- Foreground guard shell checks block embedded writer APIs when they target
+  managed paths, including Python `open(..., 'w')` / `Path.write_text`, Node
+  `fs.writeFile*`, PowerShell content writers, and shell `tee`/`touch`/`mkdir`;
+  read-only probes and active run-root candidate writes remain allowed.
 
 Implementation tasks:
 
@@ -449,6 +453,12 @@ Implementation tasks:
   tests for exploration reuse on review-fix re-entry.
 - Add `workflowprogram-foreground-guard.py`, register it in plugin hooks, and
   include it in repository/dist validation.
+- Add embedded-writer regression coverage for Bash/PowerShell/Shell commands
+  that target `.claude/**` or `.workflowprogram/managed-files.json`.
+- Generate target-runtime wrappers with a cross-platform plugin Python launcher:
+  keep `bin/workflowprogram-python` on POSIX, use `sys.executable` plus
+  plugin-local bootstrap and `PYTHONPATH` setup on Windows, and cover this with
+  an invocation test for generated `workflow-entry.py`.
 - Update `workflowprogram-native-develop` skill and WorkflowProgram LLD skill
   references with guard and clarification rules.
 - Add regression tests for route intent, clarification open questions, review

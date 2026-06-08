@@ -98,6 +98,128 @@ def test_guard_allows_candidate_write_under_run_root(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout
 
 
+def test_guard_blocks_python_embedded_write_to_managed_workflow(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    (target / ".claude" / "workflows").mkdir(parents=True)
+    run_root.mkdir()
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_DESIGN_REVIEW",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "tool_input": {
+                "command": "python3 -c \"open('.claude/workflows/stride.js','w').write('bad')\"",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    assert "Foreground shell writes are blocked" in completed.stdout
+
+
+def test_guard_blocks_python_embedded_write_to_managed_manifest(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    (target / ".workflowprogram").mkdir(parents=True)
+    run_root.mkdir()
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_DESIGN_REVIEW",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "tool_input": {
+                "command": (
+                    "python3 -c \"from pathlib import Path; "
+                    "Path('.workflowprogram/managed-files.json').write_text('{}')\""
+                ),
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    assert "Foreground shell writes are blocked" in completed.stdout
+
+
+def test_guard_allows_python_read_from_managed_path(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    (target / ".claude" / "workflows").mkdir(parents=True)
+    run_root.mkdir()
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_DESIGN_REVIEW",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "tool_input": {
+                "command": "python3 -c \"open('.claude/workflows/stride.js').read()\"",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_allows_python_write_under_run_root_candidate(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir(parents=True)
+    (run_root / "outputs" / "candidate" / ".claude" / "workflows").mkdir(parents=True)
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_DESIGN_REVIEW",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "stride.js"
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "tool_input": {
+                "command": f"python3 -c \"open('{candidate.as_posix()}','w').write('candidate')\"",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
 def test_record_unwraps_workflow_tool_result_envelope(tmp_path: Path) -> None:
     target = tmp_path / "target"
     run_root = tmp_path / "run"
