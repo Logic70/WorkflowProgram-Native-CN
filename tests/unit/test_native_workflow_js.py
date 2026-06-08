@@ -2302,6 +2302,46 @@ def test_develop_migrate_exploration_prompt_treats_migration_decisions_as_settle
     assert "No true blockers identified" in prompt
 
 
+def test_develop_design_prompt_enforces_first_attempt_output_budgets() -> None:
+    """Large migration designs should be compact before the first
+    StructuredOutput call instead of relying on schema rejection retries."""
+    exploration = {
+        "status": "PASS",
+        "findings": ["The current command and registered assets define behavior."],
+        "constraints": ["Do not write target files directly."],
+        "migrationTasks": ["Generate the target Native Workflow JS control plane."],
+        "trueBlockers": [],
+        "userDecisions": [],
+        "sourceOfTruth": [".claude/commands/stride-audit.md"],
+        "assetDispositionHints": [
+            {
+                "path": ".claude/workflows/stride-audit.js",
+                "action": "generate",
+                "reason": "Target Native Workflow JS deliverable.",
+            }
+        ],
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="migrate"),
+        agent_results=[exploration, exploration, pass_design_evidence()],
+    )
+
+    design_prompt = execution["prompts"][execution["labels"].index("workflowprogram-develop:design")]
+    assert "The first StructuredOutput call must satisfy the schema" in design_prompt
+    assert "hard first-attempt budgets" in design_prompt
+    assert "lowLevelDesign target <= 9000 chars" in design_prompt
+    assert "traceability <= 35 items" in design_prompt
+    assert "Before calling StructuredOutput, self-check field lengths and item counts" in design_prompt
+    assert "It is not a full target implementation or copied design document" in design_prompt
+
+    source = DEVELOP_WORKFLOW.read_text(encoding="utf-8")
+    assert "Hard max 12000 chars; target <= 9000 chars" in source
+    assert "Hard max 40 items; target <= 35 items" in source
+
+
 def test_develop_native_workflow_blocks_review_required_revisions() -> None:
     review = {
         **pass_review_evidence(),

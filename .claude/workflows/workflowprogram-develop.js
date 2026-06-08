@@ -57,10 +57,14 @@ const migrationExplorationGuidance = [
 ].join('\n')
 const designOutputGuidance = [
   'Design output bounds:',
-  'Return concise implementation-ready JSON. Do not paste full source files, full target Agent/Skill prompts, or long tutorial prose.',
-  'Prefer phase contracts, generation constraints, and traceability references over full inline JS bodies for large workflows.',
-  'Recommended limits: summary <= 1200 chars, highLevelDesign <= 8000 chars, lowLevelDesign <= 12000 chars, traceability <= 40 items, assetDisposition <= 120 items.',
-  'If details are too large, summarize them by phase and reference sourceOfTruth paths rather than copying their contents.',
+  'The first StructuredOutput call must satisfy the schema. Treat the bounds below as hard first-attempt budgets, not retry hints.',
+  'Return concise implementation-ready JSON. Do not paste full source files, full target Agent/Skill prompts, full candidate JS, full HLD/LLD documents, or long tutorial prose.',
+  'Use safe budgets below the schema maxima: summary <= 1000 chars, highLevelDesign target <= 6000 chars, lowLevelDesign target <= 9000 chars, traceability <= 35 items, each traceability item <= 300 chars, assetDisposition <= 110 items.',
+  'Before calling StructuredOutput, self-check field lengths and item counts. If uncertain, shorten highLevelDesign, lowLevelDesign, and traceability before calling the tool.',
+  'Prefer phase contracts, gate names, generation constraints, and sourceOfTruth path references over full inline JS bodies for large workflows.',
+  'For large migrations, lowLevelDesign is a compact implementation map: phase list, gate contracts, schema families, write boundaries, validation/smoke plan, and recovery paths. It is not a full target implementation or copied design document.',
+  'Keep traceability representative rather than exhaustive; group related requirements or assets when assetDisposition already records file-level handling.',
+  'If details are too large, summarize them by phase and reference sourceOfTruth paths or assetDisposition entries rather than copying their contents.',
 ].join('\n')
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
@@ -676,10 +680,10 @@ The target Native Workflow JS is the runtime truth. Keep workflow-specific Agent
         type: 'object',
         properties: {
           status: { type: 'string', enum: ['PASS', 'BLOCKED'] },
-          summary: { type: 'string', maxLength: 1200 },
-          highLevelDesign: { type: 'string', maxLength: 8000 },
-          lowLevelDesign: { type: 'string', maxLength: 12000 },
-          traceability: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 400 } },
+          summary: { type: 'string', maxLength: 1200, description: 'Hard max 1200 chars; target <= 1000 chars on the first StructuredOutput call.' },
+          highLevelDesign: { type: 'string', maxLength: 8000, description: 'Hard max 8000 chars; target <= 6000 chars. Summarize deployment/user/logic/runtime/data views and reference source paths instead of copying full documents.' },
+          lowLevelDesign: { type: 'string', maxLength: 12000, description: 'Hard max 12000 chars; target <= 9000 chars. Provide a compact phase/gate/schema/write-boundary/validation map, not a full target implementation.' },
+          traceability: { type: 'array', maxItems: 40, description: 'Hard max 40 items; target <= 35 items. Group related requirements and assets instead of enumerating every file.', items: { type: 'string', maxLength: 400 } },
           assetDisposition: {
             type: 'array',
             maxItems: 120,
