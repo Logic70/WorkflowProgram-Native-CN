@@ -1,6 +1,6 @@
 {
   "name": "workflowprogram-native-cn",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "description": "Native Workflow JS control-plane toolkit for Claude Code workflow development",
   "author": {
     "name": "Logic_70",

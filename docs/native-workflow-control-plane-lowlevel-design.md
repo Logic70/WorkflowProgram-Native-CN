@@ -193,8 +193,9 @@ part of `workflowprogram-develop.js`, not just operator guidance:
 - D1 open questions are normalized before the Agent call. Resolved or answered
   objects are ignored; unresolved objects without `question` text get a stable
   fallback question and must never surface as `[object Object]`.
-- D4 review treats `requiredRevisions` as blocking evidence. A review result
-  with `status=PASS` and non-empty `requiredRevisions` is `BLOCKED_DESIGN_REVIEW`.
+- D4 review treats `requiredRevisions` as blocking evidence only when
+  `status` is not `PASS`. A PASS review with non-empty `requiredRevisions`
+  advances; the revisions are advisory follow-up items, not blockers.
 - D4 review-fix re-entry uses `reviewFixes` as the canonical correction field.
   Product JS also accepts legacy foreground aliases `designReviewRebuttal`,
   `reviewCorrections`, and `designCorrections`, but normalizes them into the
@@ -977,7 +978,7 @@ M12 已实现：
 | M13 模型选择 | optional policy resolver + withTaskModel JS helper | `resolve-task-model-policy.py`、`task-model-resolution.json` | policy tests |
 | M19 foreground guard | product JS handoff state + PreToolUse hook | `workflowprogram-foreground-guard.py`、`.workflowprogram/session-state.json` | guard unit tests、hook config validation |
 | M19 clarification repair | product JS settled decisions + open question normalization | `settledPlatformDecisions`、`normalizeOpenQuestion` | clarification unit tests、JSONL regression evidence |
-| M19 review gate repair | product JS review gate | `requiredRevisions` must be empty | design review gate unit test |
+| M19 review gate repair | product JS review gate | `status=PASS` + empty `blockingIssues` advances even when `requiredRevisions` lists follow-up implementation tasks; non-PASS revisions still block | design review gate unit tests |
 | M14 Legacy 下线评估 | deterministic fact-driven assessor | `assess-native-legacy-retirement.py`、`native-legacy-retirement-assessment` schema | unit tests、closure fixture |
 | M15 Product handoff renderer 收窄 | product handoff gate + deterministic renderer | `generate-native-workflow.py --generation-handoff`、`native-workflow-generation-handoff.json` | handoff pass/fail、mutual exclusion、bridge blocker closure |
 

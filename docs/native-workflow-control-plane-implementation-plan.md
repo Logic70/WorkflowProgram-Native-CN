@@ -475,6 +475,10 @@ Implementation tasks:
 - Update `workflowprogram-develop.js` review-block return payloads with
   `reinvokeArgsPolicy`, normalize review correction aliases, and add regression
   tests for exploration reuse on review-fix re-entry.
+- Update the design review gate so `requiredRevisions` only blocks when the
+  review itself is non-PASS or has explicit `blockingIssues`; PASS reviews may
+  carry follow-up implementation tasks already represented in traceability or
+  assetDisposition without returning `BLOCKED_DESIGN_REVIEW`.
 - Add `workflowprogram-foreground-guard.py`, register it in plugin hooks, and
   include it in repository/dist validation.
 - Add embedded-writer regression coverage for Bash/PowerShell/Shell commands
@@ -501,8 +505,8 @@ Implementation tasks:
   an invocation test for generated `workflow-entry.py`.
 - Update `workflowprogram-native-develop` skill and WorkflowProgram LLD skill
   references with guard and clarification rules.
-- Add regression tests for route intent, clarification open questions, review
-  revisions, default models, and foreground guard.
+- Add regression tests for route intent, clarification open questions, PASS vs
+  non-PASS review revisions, default models, and foreground guard.
 
 Acceptance:
 

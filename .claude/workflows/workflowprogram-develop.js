@@ -258,13 +258,17 @@ const hasReviewEvidence = (evidence, operation) =>
   evidence?.status === 'PASS' &&
   nonEmpty(evidence?.summary) &&
   asArray(evidence?.blockingIssues).length === 0 &&
-  asArray(evidence?.requiredRevisions).length === 0 &&
   (!requiresAssetDisposition(operation) || evidence?.assetDispositionReviewed === true)
 const reviewBlockingIssues = evidence => {
   const blockers = asArray(evidence?.blockingIssues).filter(nonEmpty)
-  const revisions = asArray(evidence?.requiredRevisions).filter(nonEmpty)
-  const issues = [...blockers, ...revisions.map(item => `Required revision not closed: ${item}`)]
-  return issues.length > 0 ? issues : ['Design review did not pass.']
+  if (blockers.length > 0) return blockers
+  if (evidence?.status !== 'PASS') {
+    const revisions = asArray(evidence?.requiredRevisions).filter(nonEmpty)
+    if (revisions.length > 0) {
+      return revisions.map(item => `Required revision not closed: ${item}`)
+    }
+  }
+  return ['Design review did not pass.']
 }
 const hasSmokeEvaluatorEvidence = evidence =>
   hasEvidence(evidence) &&
@@ -747,6 +751,8 @@ ${JSON.stringify(requirementSummary)}
 
 Design:
 ${JSON.stringify(designEvidence)}
+
+requiredRevisions semantics: requiredRevisions must only hold design-closure revisions still missing from the design itself — e.g., incomplete highLevelDesign, lowLevelDesign, or traceability. Implementation tasks already represented in traceability or assetDisposition are NOT requiredRevisions. When status=PASS, requiredRevisions should usually be [] since the design is accepted and any implementation follow-up is covered by existing traceability and assetDisposition.
 
 Check requirement coverage, lifecycle closure, evidence flow, failure modes, ownership boundaries, testability, and the assetDisposition table. For update or migrate operations, set assetDispositionReviewed=true only when every retained, generated, updated, archived, removed, deferred, or not-applicable asset has a justified disposition and required supporting assets are explicit. Do not block a design because a target workflow JS file does not exist before Generate, because retired runtime assets still need archive, or because managed-files needs an apply-time update; verify that the design classifies those items as migration tasks with asset disposition. Do not write files. Return structured JSON only.`,
     withTaskModel('risk-review', {

@@ -2476,9 +2476,29 @@ def test_develop_reuses_supplied_explorations_on_review_fix_reinvoke() -> None:
     assert "Do not treat these corrections as new userDecisions" in design_prompt
 
 
-def test_develop_native_workflow_blocks_review_required_revisions() -> None:
+def test_develop_native_workflow_allows_pass_review_required_revisions_as_followups() -> None:
     review = {
         **pass_review_evidence(),
+        "requiredRevisions": ["Update the retired command documentation during generation."],
+    }
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            designEvidence=pass_design_evidence(),
+            reviewEvidence=review,
+        ),
+        agent_results=[pass_authoring_evidence()],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert execution["result"]["reviewEvidence"] == review
+    assert execution["result"]["generationHandoff"]["reviewEvidence"] == review
+
+
+def test_develop_native_workflow_blocks_non_pass_review_required_revisions() -> None:
+    review = {
+        **pass_review_evidence(),
+        "status": "BLOCKED",
         "requiredRevisions": ["Close the asset disposition decision before generation."],
     }
     execution = execute_native_workflow(
