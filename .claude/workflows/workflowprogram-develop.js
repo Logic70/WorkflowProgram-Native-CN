@@ -581,6 +581,10 @@ const requirementSummary = {
   lenses,
   migrationDecisions: args?.migrationDecisions || args?.explorationDisposition || {},
 }
+const reviewFixes = args?.reviewFixes || args?.designReviewRebuttal || args?.reviewCorrections || args?.designCorrections || null
+const suppliedExplorations = asArray(args?.explorations).length > 0
+  ? args.explorations
+  : (asArray(args?.explorationEvidence).length > 0 ? args.explorationEvidence : null)
 
 if (clarification.confirmedByUser !== true) {
   return respond('READY_FOR_CONFIRMATION', {
@@ -591,9 +595,9 @@ if (clarification.confirmedByUser !== true) {
 
 phase('Design')
 
-let designEvidence = args?.designEvidence
+let designEvidence = reviewFixes ? null : args?.designEvidence
 if (!designEvidence) {
-  const explorations = await parallel(
+  const explorations = suppliedExplorations || await parallel(
     ['target-context', 'runtime-boundaries'].map(lens => () =>
       agent(
         `Explore the ${lens} lens for a WorkflowProgram Native develop request.
@@ -664,6 +668,12 @@ ${JSON.stringify(requirementSummary)}
 Explorations:
 ${JSON.stringify(explorations)}
 
+${reviewFixes ? `Review correction input:
+${JSON.stringify(reviewFixes)}
+
+Treat this as a settled correction directive from a prior design review. Regenerate the design so each listed review issue is closed in design fields and assetDisposition. Do not treat these corrections as new userDecisions, and do not reuse stale blocked reviewEvidence as passing evidence.
+` : ''}
+
 Phase boundary guidance:
 ${phaseBoundaryGuidance}
 
@@ -727,7 +737,7 @@ if (!hasDesignEvidence(designEvidence, operation)) {
 
 phase('Review')
 
-let reviewEvidence = args?.reviewEvidence
+let reviewEvidence = reviewFixes ? null : args?.reviewEvidence
 if (!reviewEvidence) {
   reviewEvidence = await agent(
     `Review this WorkflowProgram Native develop design from a fresh context.
@@ -763,6 +773,13 @@ if (!hasReviewEvidence(reviewEvidence, operation)) {
     designEvidence,
     reviewEvidence,
     nextAction: 'FIX_DESIGN_AND_REINVOKE',
+    reinvokeArgsPolicy: {
+      supportedCorrectionField: 'reviewFixes',
+      acceptedAliases: ['designReviewRebuttal', 'reviewCorrections', 'designCorrections'],
+      reusableFields: ['request', 'targetRoot', 'runRoot', 'runId', 'operation', 'clarification', 'migrationDecisions', 'explorations'],
+      omitStaleFields: ['reviewEvidence', 'authoringEvidence', 'authoringSpec', 'generationEvidence', 'validationEvidence', 'smokeEvidence', 'applyEvidence'],
+      rule: 'When review blocks, reinvoke with reviewFixes plus reusable fields. Do not invent unsupported fields, and do not pass stale blocked reviewEvidence as if it were accepted.',
+    },
   })
 }
 

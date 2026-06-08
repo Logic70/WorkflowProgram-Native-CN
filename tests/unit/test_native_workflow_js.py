@@ -2342,6 +2342,76 @@ def test_develop_design_prompt_enforces_first_attempt_output_budgets() -> None:
     assert "Hard max 40 items; target <= 35 items" in source
 
 
+def test_develop_reuses_supplied_explorations_on_review_fix_reinvoke() -> None:
+    """Review-fix re-entry should not repeat expensive exploration when the
+    prior exploration evidence is supplied."""
+    exploration = {
+        "status": "PASS",
+        "findings": ["Existing command, agents, and skills define behavior."],
+        "constraints": ["Only WPN controlled generation may write assets."],
+        "migrationTasks": ["Regenerate design after review fixes."],
+        "trueBlockers": [],
+        "userDecisions": [],
+        "sourceOfTruth": [".claude/commands/stride-audit.md"],
+        "assetDispositionHints": [
+            {
+                "path": ".claude/workflows/stride-audit.js",
+                "action": "generate",
+                "reason": "Target Native Workflow JS deliverable.",
+            }
+        ],
+        "blockingIssues": [],
+    }
+    authoring = {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(
+            supporting_assets=[
+                {
+                    "kind": "workflow",
+                    "path": ".claude/workflows/stride-audit.js",
+                    "content": "phase('Probe')\nreturn { status: 'PASS' }\n",
+                    "reason": "Generated Native Workflow JS target.",
+                }
+            ],
+            asset_disposition=[
+                {
+                    "path": ".claude/workflows/stride-audit.js",
+                    "action": "generate",
+                    "reason": "Target Native Workflow JS deliverable.",
+                    "supportingAssetPath": ".claude/workflows/stride-audit.js",
+                }
+            ],
+        ),
+        "blockingIssues": [],
+    }
+    design = pass_design_evidence()
+    design["assetDisposition"] = authoring["authoringSpec"]["asset_disposition"]
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            operation="migrate",
+            explorations=[exploration, exploration],
+            designReviewRebuttal={"requiredRevisionsClosed": ["Fix phantom asset disposition entries."]},
+        ),
+        agent_results=[design, pass_review_evidence(), authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert "workflowprogram-develop:explore:target-context" not in execution["labels"]
+    assert "workflowprogram-develop:explore:runtime-boundaries" not in execution["labels"]
+    assert execution["labels"][:3] == [
+        "workflowprogram-develop:design",
+        "workflowprogram-develop:review",
+        "workflowprogram-develop:author",
+    ]
+    design_prompt = execution["prompts"][0]
+    assert "Review correction input:" in design_prompt
+    assert "design review" in design_prompt
+    assert "requiredRevisionsClosed" in design_prompt
+    assert "Do not treat these corrections as new userDecisions" in design_prompt
+
+
 def test_develop_native_workflow_blocks_review_required_revisions() -> None:
     review = {
         **pass_review_evidence(),
@@ -2359,6 +2429,9 @@ def test_develop_native_workflow_blocks_review_required_revisions() -> None:
     assert execution["result"]["blockingIssues"] == [
         "Required revision not closed: Close the asset disposition decision before generation."
     ]
+    assert execution["result"]["reinvokeArgsPolicy"]["supportedCorrectionField"] == "reviewFixes"
+    assert "designReviewRebuttal" in execution["result"]["reinvokeArgsPolicy"]["acceptedAliases"]
+    assert "reviewEvidence" in execution["result"]["reinvokeArgsPolicy"]["omitStaleFields"]
 
 
 def test_develop_native_workflow_requests_controlled_generation_after_design_review() -> None:

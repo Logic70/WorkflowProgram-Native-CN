@@ -195,6 +195,14 @@ part of `workflowprogram-develop.js`, not just operator guidance:
   fallback question and must never surface as `[object Object]`.
 - D4 review treats `requiredRevisions` as blocking evidence. A review result
   with `status=PASS` and non-empty `requiredRevisions` is `BLOCKED_DESIGN_REVIEW`.
+- D4 review-fix re-entry uses `reviewFixes` as the canonical correction field.
+  Product JS also accepts legacy foreground aliases `designReviewRebuttal`,
+  `reviewCorrections`, and `designCorrections`, but normalizes them into the
+  design prompt as settled correction input. When prior `explorations` or
+  `explorationEvidence` are supplied, D3 must reuse them instead of rerunning
+  repository exploration. Stale `reviewEvidence`, `authoringEvidence`,
+  `authoringSpec`, generation, validation, smoke, and apply evidence must be
+  omitted on review-fix reinvocation.
 
 Foreground bypass is controlled by `workflowprogram-foreground-guard.py` plus
 the plugin `PreToolUse` hook:

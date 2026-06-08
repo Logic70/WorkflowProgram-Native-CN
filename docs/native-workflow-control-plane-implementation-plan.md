@@ -429,6 +429,9 @@ Design changes:
   stringifies object questions as `[object Object]`.
 - D4 design review gate treats non-empty `requiredRevisions` as blocking even
   when `status=PASS`.
+- D4 review-fix re-entry has a first-class `reviewFixes` correction field,
+  accepts `designReviewRebuttal` as a compatibility alias, reuses supplied
+  `explorations`, and tells the foreground which stale evidence fields to omit.
 - Product JS uses built-in default task model mappings when no `taskModels` map
   is supplied; explicit maps still own their provided task types.
 - Intent routing gives workflow create/update/migrate requests priority over
@@ -441,6 +444,9 @@ Implementation tasks:
 - Update `workflowprogram-develop.js`, `workflowprogram-audit.js`,
   `workflowprogram-iterate.js`, and `workflowprogram-native-authoring.js` task
   model fallback behavior.
+- Update `workflowprogram-develop.js` review-block return payloads with
+  `reinvokeArgsPolicy`, normalize review correction aliases, and add regression
+  tests for exploration reuse on review-fix re-entry.
 - Add `workflowprogram-foreground-guard.py`, register it in plugin hooks, and
   include it in repository/dist validation.
 - Update `workflowprogram-native-develop` skill and WorkflowProgram LLD skill
