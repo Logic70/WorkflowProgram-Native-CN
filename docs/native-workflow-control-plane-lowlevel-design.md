@@ -224,6 +224,10 @@ the plugin `PreToolUse` hook:
   latest user request contains WPN / WorkflowProgram Native intent. This makes
   the product Workflow invocation a hook-enforced entry boundary instead of a
   skill-description convention;
+- before a foreground guard state exists, WPN / WorkflowProgram Native
+  transcripts allow read-only shell probes but block foreground file edits,
+  shell writes, and side-effect scripts. Creating run directories, route output
+  files, candidate assets, or managed manifests is product Workflow ownership;
 - controlled generation, validation, smoke, and apply remain explicit scripts
   selected by the product JS `nextAction`.
 - generated target-runtime wrappers delegate shared plugin scripts through a

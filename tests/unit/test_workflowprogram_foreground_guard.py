@@ -155,6 +155,74 @@ def test_guard_allows_foreground_agent_for_non_wpn_intent(tmp_path: Path) -> Non
     assert completed.returncode == 0, completed.stdout
 
 
+def test_guard_blocks_shell_write_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "mkdir -p .workflowprogram/runs/regression/outputs/stages",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "foreground shell write" in payload["reason"]
+
+
+def test_guard_allows_read_only_shell_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "git branch --show-current",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_blocks_file_write_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    (target / ".claude" / "workflows").mkdir(parents=True)
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Write",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "file_path": str(target / ".claude" / "workflows" / "stride.js"),
+                "content": "export const meta = {}",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "foreground file edit" in payload["reason"]
+
+
 def test_guard_blocks_python_embedded_write_to_managed_workflow(tmp_path: Path) -> None:
     target = tmp_path / "target"
     run_root = tmp_path / "run"

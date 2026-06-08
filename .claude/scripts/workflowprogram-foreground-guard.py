@@ -445,6 +445,10 @@ def allow(reason: str = "allowed") -> int:
 
 def check_file_tool(payload: dict[str, Any], state: dict[str, Any] | None) -> int:
     if not state:
+        if has_wpn_intent(payload):
+            return block(
+                "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground file edit.",
+            )
         return allow("no-state")
     for raw_path in input_paths(tool_input(payload)):
         path = Path(raw_path)
@@ -463,6 +467,14 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
     found = find_state_from_path(cwd)
     state = found[1] if found else None
     if not state:
+        if has_wpn_intent(payload) and (
+            command_writes(command)
+            or command_has_known_side_effect(command)
+            or command_embedded_writer(command)
+        ):
+            return block(
+                "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground shell write or side-effect script.",
+            )
         return allow("no-state")
     if command_is_guard(command):
         return allow("guard-command")

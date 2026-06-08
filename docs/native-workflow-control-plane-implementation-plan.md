@@ -445,6 +445,10 @@ Design changes:
 - Foreground guard also blocks `Agent` / `Task` tool use for transcripts whose
   latest user request carries WPN / WorkflowProgram Native intent, forcing the
   foreground assistant to enter through the product Workflow before exploration.
+- Before guard state exists, WPN transcripts allow read-only shell probes but
+  block file edits, shell writes, and side-effect scripts so the foreground
+  assistant cannot create run roots or route-output files as a substitute for
+  invoking the product Workflow.
 
 Implementation tasks:
 
@@ -461,6 +465,8 @@ Implementation tasks:
 - Register the foreground guard for `Agent` / `Task` and add transcript-based
   WPN intent tests that block generic exploration while leaving non-WPN Agent
   usage untouched.
+- Add no-state WPN guard tests for shell write blocking, read-only shell allow,
+  and direct file-write blocking.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:
   keep `bin/workflowprogram-python` on POSIX, use `sys.executable` plus
   plugin-local bootstrap and `PYTHONPATH` setup on Windows, and cover this with
