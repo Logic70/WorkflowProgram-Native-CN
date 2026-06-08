@@ -452,7 +452,8 @@ Design changes:
 - Guard state records `updatedAt` plus optional transcript/session binding. Fresh
   WPN requests ignore stale unbound `.workflowprogram/session-state.json` files
   so an interrupted old run cannot redirect the foreground assistant into an old
-  `runRoot`.
+  `runRoot`; unbound states apply only to recent commands that explicitly
+  reference the same `runRoot` or `runId`.
 - Leaf entry skills derive `targetRoot`, `runId`, `runRoot`, operation, and
   product `scriptPath` from read-only context only; they do not instruct the
   foreground assistant to run `route-native-control-plane.py` or create run
@@ -481,7 +482,8 @@ Implementation tasks:
   allowed before state exists and write block reasons to stderr so Claude Code
   can show a recoverable message instead of a generic hook error.
 - Add stale-state regression tests for WPN transcripts: old unbound states fall
-  back to no-state product-Workflow blocking, while recent states remain active.
+  back to no-state product-Workflow blocking, recent unbound states without a run
+  reference also fall back to no-state, and same-run references remain active.
 - Update `workflowprogram-native-develop/SKILL.md` and its static test so the
   first step is side-effect-free product Workflow invocation preparation.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:

@@ -269,6 +269,29 @@ def state_is_recent(state: dict[str, Any]) -> bool:
     return 0 <= age <= MAX_UNBOUND_STATE_AGE_SECONDS
 
 
+def payload_mentions_state_run(payload: dict[str, Any], state: dict[str, Any]) -> bool:
+    run_root = str(state.get("runRoot") or "").strip()
+    run_id = str(state.get("runId") or "").strip()
+    text = "\n".join(
+        [
+            str(payload.get("cwd") or ""),
+            str(tool_input(payload).get("command") or ""),
+            *[str(item) for item in input_paths(tool_input(payload))],
+        ],
+    ).replace("\\", "/")
+    text_lower = text.lower()
+    if run_root:
+        run_identity = path_identity(run_root).lower()
+        run_raw = run_root.replace("\\", "/").lower()
+        variants = {run_identity, run_raw}
+        match = re.match(r"^([a-z]):/(.*)$", run_identity)
+        if match:
+            variants.add(f"/mnt/{match.group(1)}/{match.group(2)}")
+        if any(variant and variant in text_lower for variant in variants):
+            return True
+    return bool(run_id and run_id.lower() in text_lower)
+
+
 def state_applies_to_payload(payload: dict[str, Any], state: dict[str, Any]) -> bool:
     if not has_wpn_intent(payload):
         return True
@@ -282,9 +305,9 @@ def state_applies_to_payload(payload: dict[str, Any], state: dict[str, Any]) -> 
     if payload_transcript and state_transcript:
         return path_identity(payload_transcript) == path_identity(state_transcript)
 
-    # Legacy states have no transcript/session binding. Treat only recent states
-    # as active so old interrupted runs do not hijack a fresh WPN request.
-    return state_is_recent(state)
+    # Legacy states have no transcript/session binding. They apply only to
+    # immediate continuation commands that explicitly reference the same run.
+    return state_is_recent(state) and payload_mentions_state_run(payload, state)
 
 
 def current_state_from_found(payload: dict[str, Any], found: tuple[Path, dict[str, Any]] | None) -> dict[str, Any] | None:

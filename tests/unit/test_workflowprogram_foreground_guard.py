@@ -262,7 +262,7 @@ def test_guard_ignores_stale_unbound_state_for_new_wpn_intent(tmp_path: Path) ->
     assert "must launch the product Workflow" in payload["reason"]
 
 
-def test_guard_keeps_recent_unbound_state_active(tmp_path: Path) -> None:
+def test_guard_ignores_recent_unbound_state_without_run_reference(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
     target = tmp_path / "target"
@@ -286,6 +286,39 @@ def test_guard_keeps_recent_unbound_state_active(tmp_path: Path) -> None:
             "transcript_path": str(transcript),
             "tool_input": {
                 "command": "mkdir -p .workflowprogram/runs/new/outputs/stages",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "must launch the product Workflow" in payload["reason"]
+
+
+def test_guard_keeps_recent_unbound_state_active_for_run_reference(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    run_root = target / ".workflowprogram" / "runs" / "active"
+    run_root.mkdir(parents=True)
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_GENERATION",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": f"mkdir -p {run_root / 'outputs' / 'stages'}",
             },
         },
     )

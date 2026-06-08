@@ -231,7 +231,9 @@ the plugin `PreToolUse` hook:
   files, candidate assets, or managed manifests is product Workflow ownership;
 - stale unbound guard states are ignored for fresh WPN transcripts. A historical
   `.workflowprogram/session-state.json` must not hijack a new migration request
-  into an old `runRoot`; recent or transcript/session-bound states remain active;
+  into an old `runRoot`; transcript/session-bound states remain active, and
+  unbound states only apply to recent commands that explicitly reference the same
+  `runRoot` or `runId`;
 - leaf entry skills must not instruct the foreground assistant to run
   `route-native-control-plane.py`, create `RUN_ROOT`, or write route files before
   the product `Workflow({ scriptPath, args })` call. They derive initial args
