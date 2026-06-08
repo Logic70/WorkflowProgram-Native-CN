@@ -290,7 +290,7 @@ export const meta = {
 - `constraints`：目标设计必须遵守的约束。
 - `migrationTasks`：迁移要完成的工作项。
 - `trueBlockers`：无法继续可信设计的真实阻断。
-- `userDecisions`：会改变拓扑、边界或副作用的未决用户决策。
+- `userDecisions`：外部用户必须决定、且无法由现有需求、source-of-truth、迁移默认策略或 Design 阶段自行解决的未决决策。
 - `sourceOfTruth`：当前行为真源。
 - `assetDispositionHints`：`retain | generate | update | archive | remove | defer | not-applicable` 建议。
 
@@ -299,6 +299,30 @@ export const meta = {
 `assetDispositionHints` 中的路径和处置动作，则视为非阻塞确认项，继续传入
 Design/Author 作为上下文；只有未被已决事项或资产处置建议覆盖、且仍会改变拓扑、
 证据 gate 或写入边界的 `userDecisions` 才能触发 `BLOCKED_DESIGN`。
+
+探索输出中的内部设计工作不得触发 `BLOCKED_DESIGN`。以下文本形态即使出现在
+`userDecisions` 中，也必须被 gate 归一化为 Design work item：
+
+- 12-phase / phase topology / phase mapping / agent naming convention 需要在 Design 中确定。
+- gate-to-phase mapping、gate schema、重试策略需要在 Design 中确定。
+- phase output intermediate schema 或新增中间产物集合需要在 Design 中确定。
+- Python script call strategy、Bash tool strategy 或 subprocess strategy 需要在 Design 中确定。
+- task model mapping、smoke fixture 选择、managed-files 计数或 asset disposition 细节需要在 Design 中确定。
+
+这些事项由 Designer 从用户已决输入、现有 command/Agent/Skill、设计文档和历史 runtime
+中收敛，不能反复要求真实用户回答。
+
+`removeDotAgentsDir` 的路径语义是确定性的：它只允许处置目标根目录的 `.agents/`
+和 `.agentos/` 等临时重复目录，不允许把 `.claude/agents/` 或 `.claude/skills/`
+整目录标记为 `remove`。除非 `migrationDecisions.removeClaudeAgentsDir=true`
+或 `removeClaudeRegistryDir=true`，Design 后的确定性 policy gate 必须阻断这类
+assetDisposition；正式 registry 资产只能 retain/reuse，或在有明确支持资产时按单文件
+archive/update/remove。
+
+Design Agent 的 schema 使用长度和数量上限约束：`summary`、`highLevelDesign`、
+`lowLevelDesign`、`traceability` 和 `assetDisposition` 都必须保持 implementation-ready
+but concise。大型 workflow 应输出 phase contracts 与生成约束，而不是复制完整源文件、
+完整 Agent/Skill prompt 或完整 JS body。
 
 以下情况在 migrate 下默认为 `migrationTasks`，不得直接导致 `BLOCKED_DESIGN`：
 

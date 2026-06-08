@@ -2274,6 +2274,9 @@ def test_develop_migrate_exploration_prompt_treats_migration_decisions_as_settle
     assert '"flatOutputDir":"outputs/stride-audit"' in prompt
     assert "Do not return them again in userDecisions" in prompt
     assert "Do not repeat them in userDecisions" in prompt
+    assert "userDecisions is only for external user decisions" in prompt
+    assert "Do not put Design work items in userDecisions" in prompt
+    assert "removeDotAgentsDir means only target-root .agents/ and .agentos/" in prompt
     assert "return trueBlockers as an empty array" in prompt
     assert "No true blockers identified" in prompt
 
@@ -2508,6 +2511,106 @@ def test_develop_migrate_still_blocks_uncovered_user_decisions() -> None:
     assert execution["labels"] == [
         "workflowprogram-develop:explore:target-context",
         "workflowprogram-develop:explore:runtime-boundaries",
+    ]
+
+
+def test_develop_migrate_does_not_block_internal_design_work_items() -> None:
+    exploration = {
+        "status": "PASS",
+        "findings": ["The target has enough source-of-truth assets for migration."],
+        "constraints": ["Use existing command, agent, skill, and config behavior."],
+        "migrationTasks": ["Design the v0.6 phase contracts before authoring."],
+        "trueBlockers": [],
+        "userDecisions": [
+            "The exact 12-phase topology needs to be designed during Design.",
+            "The 12-stage gate-to-phase mapping must be determined during Design.",
+            "The phase output intermediate schema set must be determined during Design.",
+            "The Python script call strategy via Bash tool needs to be defined during Design.",
+        ],
+        "sourceOfTruth": [".claude/commands/stride-audit.md"],
+        "assetDispositionHints": [],
+        "blockingIssues": [],
+    }
+
+    design = pass_design_evidence()
+    design["assetDisposition"] = [
+        {
+            "path": ".claude/workflows/generated-probe.js",
+            "action": "generate",
+            "reason": "Missing target workflow is the migration deliverable.",
+            "supportingAssetPath": ".claude/workflows/generated-probe.js",
+        }
+    ]
+    supporting_assets = [
+        {
+            "kind": "workflow",
+            "path": ".claude/workflows/generated-probe.js",
+            "content": "phase('Probe')\nreturn { status: 'PASS' }\n",
+            "reason": "Generated Native Workflow JS target.",
+        }
+    ]
+    authoring = {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(
+            supporting_assets=supporting_assets,
+            asset_disposition=design["assetDisposition"],
+        ),
+        "blockingIssues": [],
+    }
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(
+            operation="migrate",
+            migrationDecisions={
+                "phaseCount": 12,
+                "pythonScriptsViaBashTool": True,
+                "stageGatesViaJSFlowControl": True,
+            },
+        ),
+        agent_results=[exploration, exploration, design, pass_review_evidence(), authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert "User decision required" not in json.dumps(execution["result"])
+    assert execution["labels"][-1] == "workflowprogram-develop:author"
+
+
+def test_develop_migrate_blocks_whole_claude_registry_removal() -> None:
+    exploration = {
+        "status": "PASS",
+        "findings": ["The target has a registered .claude agent registry."],
+        "constraints": ["Remove only duplicate root .agents/ assets."],
+        "migrationTasks": [],
+        "trueBlockers": [],
+        "userDecisions": [],
+        "sourceOfTruth": [".claude/settings.json"],
+        "assetDispositionHints": [],
+        "blockingIssues": [],
+    }
+    design = pass_design_evidence()
+    design["assetDisposition"] = [
+        {
+            "path": ".claude/agents/",
+            "action": "remove",
+            "reason": "Incorrectly interpreted removeDotAgentsDir.",
+        }
+    ]
+
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(operation="migrate", migrationDecisions={"removeDotAgentsDir": True}),
+        agent_results=[exploration, exploration, design],
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_DESIGN"
+    assert execution["result"]["blockingIssues"] == [
+        "Invalid assetDisposition: .claude/agents/ cannot be removed by removeDotAgentsDir; retain/reuse .claude registry assets or disposition individual files unless removeClaudeAgentsDir=true."
+    ]
+    assert execution["labels"] == [
+        "workflowprogram-develop:explore:target-context",
+        "workflowprogram-develop:explore:runtime-boundaries",
+        "workflowprogram-develop:design",
     ]
 
 

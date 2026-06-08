@@ -190,6 +190,9 @@ FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个
 - `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
 - `operation=migrate` 在 D1 Clarify 前补齐迁移默认 lens：成功信号是生成候选 Native JS 并具备 static validation / smoke evidence；subprocess 合约从现有 `.claude/` 与脚本资产在 Design / Explore 中发现；旧 `.workflowprogram/runtime` 默认 retained/deferred 为非活动资产，除非用户明确要求处置。
 - Leaf Skill 必须给出 `scriptPath + structured args object` 的 canonical invocation 正例，并明确禁止以字符串 args 或 dotted key 作为主路径。`migrationDecisions` 是已决输入，不得在 Explore 阶段重新作为 `userDecisions` 阻塞。
+- Explore 阶段的 `userDecisions` 只表示外部用户必须决定且无法由现有需求、真源资产、迁移默认策略或 Design 阶段自行解决的问题。phase mapping、gate mapping、中间 schema、Python/Bash tool 调用策略、managed-files 计数和 smoke fixture 选择都属于 Design work item，不得作为用户阻塞。
+- `removeDotAgentsDir` 只指目标根目录的 `.agents/`、`.agentos/` 等临时重复目录，不指 `.claude/agents/`。除非显式 `removeClaudeAgentsDir=true`，`.claude/agents/` 与 `.claude/skills/` 是正式注册资产，必须默认 retain/reuse 或按单文件处置。
+- Design Agent 输出必须限幅：大工作流返回 phase contracts、生成约束和 traceability 引用，不复制完整源文件、完整 Agent/Skill prompt 或超大 JS body，避免后台 Workflow 因超长 HLD/LLD 无法返回结构化结果。
 
 ## 6. 运行时视图
 

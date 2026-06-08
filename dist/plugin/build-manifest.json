@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T01:18:23Z",
+  "generated_at": "2026-06-08T07:23:18Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.12",
-  "source_commit": "b0e9b0eb14a623490052ba77a96e90fc10a5ab1f",
+  "plugin_version": "0.1.13",
+  "source_commit": "56bddd518baaf41512ed0a82a965c69bf71839b0",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "a431766415615aa95b53d91daf6bb83c6f940a0be1f0ab2dff1a92871923b452",
+      "sha256": "3611719d9bdd6abd8da8d62c84797139a480c823cd09c09136249cc6e94d95ce",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "ed3658cfcdedfffdb35ea0115908221f410aabbc6f41af2c83eccaaca4005889",
+      "sha256": "09edc7064aefe18c34c8280bd257e3af4aebae11898428d50d03674185499b8f",
       "size": 548
     },
     {
@@ -754,8 +754,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "ee2ba31b7893b19ac0a4722ceae5db4354f473c534831ab036834d27e05f9c34",
-      "size": 48305
+      "sha256": "4fe2a2ce82a48b3f67a1559b868d869edf870806d9d71d7ebdf46b1de1881f23",
+      "size": 52485
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

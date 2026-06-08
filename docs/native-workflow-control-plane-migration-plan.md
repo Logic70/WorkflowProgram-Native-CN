@@ -538,6 +538,9 @@ M11 v1 已完成：
 | 把 M7 原型或 M8 分发骨架误认为最终控制面 | 文档明确 M7 是过渡切片；M8 只分发五个入口并验证路径启动；M9-M10C 才迁移 WorkflowProgram 自身业务控制流 |
 | 原生 resume 导致副作用重复执行 | 为 apply、publish 和外部调用增加 candidate hash、manifest 和 drift 检查 |
 | 模型选择策略散落在 Agent prompt 和 JS 中 | M13 已实现：使用逻辑 task type 和集中 model policy；默认继承模型 |
+| Explore 把内部设计工作误报为用户决策 | `operation=migrate` gate 将 phase/gate/schema/Python Bash strategy/smoke fixture/managed-files count 等问题归一化为 Design work item；只有外部用户必须决策且无法由真源或默认策略收敛的问题才阻塞 |
+| `removeDotAgentsDir` 被误解为删除 `.claude/agents/` | 该决策只适用于根目录 `.agents/` / `.agentos/`；develop JS 对 `.claude/agents/` 和 `.claude/skills/` 整目录 remove 增加确定性阻断，除非显式允许 removeClaude registry |
+| Design Agent 产出超长 HLD/LLD 后无法返回结构化结果 | Design prompt 与 schema 增加输出限幅；大工作流使用 phase contracts、生成约束和 traceability 引用，不复制完整 prompt、源文件或完整 JS body |
 
 ## 8. 发布前完成定义
 

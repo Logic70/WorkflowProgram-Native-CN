@@ -49,9 +49,18 @@ const migrationExplorationGuidance = [
   'Classify exploration output into findings, constraints, migrationTasks, trueBlockers, userDecisions, sourceOfTruth, and assetDispositionHints.',
   'Expected migration work is not a design blocker: missing target .claude/workflows/<name>.js, stale workflow-spec.yaml, retired .workflowprogram/runtime/, stale managed-files.json, duplicate legacy assets, and no existing Native JS reference are migrationTasks when a current command, Agent, Skill, design document, runtime file, candidate, or user decision still defines behavior.',
   'Only trueBlockers stop Design: unreadable target roots, no usable behavioral source of truth, unresolved user decisions that change topology, unclear write boundaries, or missing required assets with no replacement.',
-  'Resolved migration decisions supplied in requirementSummary.migrationDecisions are settled inputs. Do not return them again in userDecisions. userDecisions is only for unresolved choices that can still change topology, evidence gates, or write boundaries.',
+  'Resolved migration decisions supplied in requirementSummary.migrationDecisions are settled inputs. Do not return them again in userDecisions. userDecisions is only for external user decisions that cannot be resolved from existing requirements, source-of-truth assets, migration defaults, or the Design phase.',
+  'Do not put Design work items in userDecisions. Phase topology or mapping, gate-to-phase mapping, intermediate schemas, Python/Bash tool strategy, task model mapping, smoke fixture choice, managed-files counts, and asset disposition details are Design responsibilities when sources or migration decisions exist.',
+  'removeDotAgentsDir means only target-root .agents/ and .agentos/ legacy duplicate directories. It never means .claude/agents/. Unless migrationDecisions.removeClaudeAgentsDir=true, .claude/agents/ and .claude/skills/ are official registered assets and must be retained/reused or dispositioned file-by-file, not removed as whole directories.',
   'If there is no real blocker, return trueBlockers: []. Do not put placeholder text such as "No true blockers identified" in trueBlockers.',
   'Source-of-truth priority: explicit user decisions, current command or entrypoint behavior, current Agents and Skills, current design metadata, retired runtime behavior, then historical candidates as reference only.',
+].join('\n')
+const designOutputGuidance = [
+  'Design output bounds:',
+  'Return concise implementation-ready JSON. Do not paste full source files, full target Agent/Skill prompts, or long tutorial prose.',
+  'Prefer phase contracts, generation constraints, and traceability references over full inline JS bodies for large workflows.',
+  'Recommended limits: summary <= 1200 chars, highLevelDesign <= 8000 chars, lowLevelDesign <= 12000 chars, traceability <= 40 items, assetDisposition <= 120 items.',
+  'If details are too large, summarize them by phase and reference sourceOfTruth paths rather than copying their contents.',
 ].join('\n')
 const asArray = value => Array.isArray(value) ? value : []
 const nonEmpty = value => typeof value === 'string' && value.trim().length > 0
@@ -165,15 +174,59 @@ const isCoveredByMigrationDecisions = (text, migrationDecisions) => {
     return false
   })
 }
+const isDesignWorkItemDecision = decision => {
+  const text = normalizeDecisionText(decisionText(decision))
+  if (!nonEmpty(text)) return true
+  const designSubjects = [
+    /12[-\s]?phase/,
+    /phase[^.]{0,80}(map|mapping|name|sequence|topology|contract)/,
+    /(gate|gates)[^.]{0,80}(phase|mapping|schema|policy)/,
+    /(intermediate|output)[^.]{0,80}schema/,
+    /python[^.]{0,100}(bash|tool|call|strategy|subprocess)/,
+    /subprocess[^.]{0,80}(call|strategy)/,
+    /task[-\s]?model/,
+    /smoke[^.]{0,80}fixture/,
+    /managed[-\s]?files?[^.]{0,80}(count|entry|entries)/,
+    /agent[^.]{0,80}(name|naming|mapping|convention)/,
+  ]
+  const designIntent = [
+    /needs?\s+to\s+be\s+(designed|determined|defined|mapped|specified|finali[sz]ed|closed)/,
+    /must\s+be\s+(designed|determined|defined|mapped|specified|finali[sz]ed|closed)/,
+    /not\s+yet\s+(designed|determined|defined|mapped|specified|finali[sz]ed|closed)/,
+    /during\s+design/,
+    /in\s+design/,
+    /design\s+phase/,
+    /design\s+doc\s+shows/,
+    /needs?\s+confirmation/,
+  ]
+  const userBoundary = /(managed\s+apply|write\s+boundary|approval|user\s+approval|target\s+root|external\s+policy)/.test(text)
+  return !userBoundary && designSubjects.some(pattern => pattern.test(text)) && designIntent.some(pattern => pattern.test(text))
+}
 const isNonBlockingMigrationDecision = (decision, requirementSummary, explorations) => {
   const text = decisionText(decision)
   if (!nonEmpty(text)) return true
   if (/no\s+(true\s+)?blockers?\s+identified/i.test(text)) return true
   if (/all\s+\d*\+?\s*decisions\s+resolved/i.test(text)) return true
   return (
+    isDesignWorkItemDecision(decision) ||
     isCoveredByMigrationDecisions(text, requirementSummary?.migrationDecisions) ||
     isCoveredByAssetDisposition(text, explorations)
   )
+}
+const isWholeClaudeRegistryPath = value => {
+  const normalized = pathIdentity(value).toLowerCase()
+  return [
+    '.claude/agents',
+    '.claude/skills',
+  ].some(path => normalized === path || normalized.endsWith(`/${path}`))
+}
+const designPolicyViolations = (evidence, requirementSummary) => {
+  const migrationDecisions = requirementSummary?.migrationDecisions || {}
+  const allowClaudeRegistryRemoval = migrationDecisions.removeClaudeAgentsDir === true || migrationDecisions.removeClaudeRegistryDir === true
+  if (allowClaudeRegistryRemoval) return []
+  return asArray(evidence?.assetDisposition)
+    .filter(item => item?.action === 'remove' && isWholeClaudeRegistryPath(item?.path))
+    .map(item => `Invalid assetDisposition: ${item.path} cannot be removed by removeDotAgentsDir; retain/reuse .claude registry assets or disposition individual files unless removeClaudeAgentsDir=true.`)
 }
 const explorationDesignBlockers = (explorations, operation, requirementSummary) => {
   if (operation === 'migrate') {
@@ -598,26 +651,30 @@ ${phaseBoundaryGuidance}
 Migration guidance:
 ${migrationExplorationGuidance}
 
-The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Define phases using the Phase Boundary Contract above; do not split prompt-only work or same-gate parallel exploration into noisy phases. For update or migrate operations, turn migrationTasks and assetDispositionHints into an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not block merely because the target workflow JS is missing before Generate, old design metadata is stale, old runtime assets require archive, managed-files is stale, duplicate legacy assets exist, or no Native JS reference exists. Do not write files. Return structured JSON only.`,
+Design output guidance:
+${designOutputGuidance}
+
+The target Native Workflow JS is the runtime truth. Keep workflow-specific Agents inline by default. Separate L1 schema, L2 JavaScript gates, and L3 external facts. Define phases using the Phase Boundary Contract above; do not split prompt-only work or same-gate parallel exploration into noisy phases. For update or migrate operations, turn migrationTasks and assetDispositionHints into an explicit assetDisposition table for existing and target assets. Each item must include path, action, reason, and supportingAssetPath when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. Do not block merely because the target workflow JS is missing before Generate, old design metadata is stale, old runtime assets require archive, managed-files is stale, duplicate legacy assets exist, or no Native JS reference exists. Do not remove .claude/agents/ or .claude/skills/ as whole directories unless removeClaudeAgentsDir=true. Do not write files. Return structured JSON only.`,
     withTaskModel('architecture', {
       label: 'workflowprogram-develop:design',
       schema: {
         type: 'object',
         properties: {
           status: { type: 'string', enum: ['PASS', 'BLOCKED'] },
-          summary: { type: 'string' },
-          highLevelDesign: { type: 'string' },
-          lowLevelDesign: { type: 'string' },
-          traceability: { type: 'array', items: { type: 'string' } },
+          summary: { type: 'string', maxLength: 1200 },
+          highLevelDesign: { type: 'string', maxLength: 8000 },
+          lowLevelDesign: { type: 'string', maxLength: 12000 },
+          traceability: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 400 } },
           assetDisposition: {
             type: 'array',
+            maxItems: 120,
             items: {
               type: 'object',
               properties: {
-                path: { type: 'string' },
+                path: { type: 'string', maxLength: 300 },
                 action: { type: 'string', enum: dispositionActions },
-                reason: { type: 'string' },
-                supportingAssetPath: { type: 'string' },
+                reason: { type: 'string', maxLength: 800 },
+                supportingAssetPath: { type: 'string', maxLength: 300 },
               },
               required: ['path', 'action', 'reason'],
               additionalProperties: false,
@@ -630,6 +687,15 @@ The target Native Workflow JS is the runtime truth. Keep workflow-specific Agent
       },
     }),
   )
+}
+
+const designPolicyBlockers = designPolicyViolations(designEvidence, requirementSummary)
+if (designPolicyBlockers.length > 0) {
+  return respond('BLOCKED_DESIGN', {
+    blockingIssues: designPolicyBlockers,
+    designEvidence,
+    nextAction: 'FIX_DESIGN_AND_REINVOKE',
+  })
 }
 
 if (!hasDesignEvidence(designEvidence, operation)) {
