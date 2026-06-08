@@ -2237,6 +2237,9 @@ def test_native_develop_skill_documents_canonical_structured_invocation() -> Non
     text = NATIVE_DEVELOP_SKILL.read_text(encoding="utf-8")
 
     assert "## Step 2: Launch Or Reinvoke Product JS" in text
+    assert "## Step 1: Derive Invocation Inputs Without Side Effects" in text
+    assert "Do not create `RUN_ROOT`, run `route-native-control-plane.py`" in text
+    assert "BLOCKED_WORKFLOW_TOOL_UNAVAILABLE" in text
     assert "### Canonical Invocation" in text
     assert 'scriptPath: "<PLUGIN_ROOT>/workflows/workflowprogram-develop.js"' in text
     assert "migrationDecisions" in text

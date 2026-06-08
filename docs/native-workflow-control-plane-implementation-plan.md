@@ -449,6 +449,12 @@ Design changes:
   block file edits, shell writes, and side-effect scripts so the foreground
   assistant cannot create run roots or route-output files as a substitute for
   invoking the product Workflow.
+- Leaf entry skills derive `targetRoot`, `runId`, `runRoot`, operation, and
+  product `scriptPath` from read-only context only; they do not instruct the
+  foreground assistant to run `route-native-control-plane.py` or create run
+  directories before the product Workflow call. Missing Workflow tool exposure
+  is reported as `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE`, not worked around with
+  foreground scripts.
 
 Implementation tasks:
 
@@ -467,6 +473,11 @@ Implementation tasks:
   usage untouched.
 - Add no-state WPN guard tests for shell write blocking, read-only shell allow,
   and direct file-write blocking.
+- Keep `workflowprogram-foreground-guard.py record` / `assert-commit` commands
+  allowed before state exists and write block reasons to stderr so Claude Code
+  can show a recoverable message instead of a generic hook error.
+- Update `workflowprogram-native-develop/SKILL.md` and its static test so the
+  first step is side-effect-free product Workflow invocation preparation.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:
   keep `bin/workflowprogram-python` on POSIX, use `sys.executable` plus
   plugin-local bootstrap and `PYTHONPATH` setup on Windows, and cover this with

@@ -176,6 +176,7 @@ def test_guard_blocks_shell_write_before_wpn_state(tmp_path: Path) -> None:
     assert completed.returncode == 2
     payload = json.loads(completed.stdout)
     assert "foreground shell write" in payload["reason"]
+    assert "foreground shell write" in completed.stderr
 
 
 def test_guard_allows_read_only_shell_before_wpn_state(tmp_path: Path) -> None:
@@ -192,6 +193,30 @@ def test_guard_allows_read_only_shell_before_wpn_state(tmp_path: Path) -> None:
             "transcript_path": str(transcript),
             "tool_input": {
                 "command": "git branch --show-current",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_allows_record_command_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": (
+                    "workflowprogram-python /plugin/scripts/workflowprogram-foreground-guard.py "
+                    "record --target-root target --run-root run --workflow-result latest.json --json"
+                ),
             },
         },
     )
@@ -221,6 +246,7 @@ def test_guard_blocks_file_write_before_wpn_state(tmp_path: Path) -> None:
     assert completed.returncode == 2
     payload = json.loads(completed.stdout)
     assert "foreground file edit" in payload["reason"]
+    assert "foreground file edit" in completed.stderr
 
 
 def test_guard_blocks_python_embedded_write_to_managed_workflow(tmp_path: Path) -> None:

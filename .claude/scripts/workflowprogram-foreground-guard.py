@@ -434,6 +434,7 @@ def block(reason: str, state: dict[str, Any] | None = None) -> int:
         payload["nextAction"] = state.get("nextAction")
         payload["writeMode"] = state.get("writeMode")
     print(json.dumps(payload, ensure_ascii=False))
+    print(f"WorkflowProgram foreground guard blocked tool use: {reason}", file=sys.stderr)
     return 2
 
 
@@ -464,6 +465,8 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
     data = tool_input(payload)
     command = str(data.get("command") or "")
     cwd = Path(str(payload.get("cwd") or data.get("cwd") or os.getcwd()))
+    if command_is_guard(command):
+        return allow("guard-command")
     found = find_state_from_path(cwd)
     state = found[1] if found else None
     if not state:
@@ -476,8 +479,6 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
                 "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground shell write or side-effect script.",
             )
         return allow("no-state")
-    if command_is_guard(command):
-        return allow("guard-command")
     if command_is_commit(command):
         if commit_allowed(state):
             return allow("managed-apply-commit")

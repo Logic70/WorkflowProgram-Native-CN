@@ -38,21 +38,23 @@ version: 1.1.0
 - 交互式 smoke 未实际执行时，不得伪造 `PASS`。
 - 已有旧 runtime 目标也默认使用 Native authoring；若 router 返回 `manual_migration_required=true`，必须在候选区完成样例验证后再由用户批准写入，且不得自动删除旧 runtime 文件。
 
-## Step 1: Resolve Mode And Roots
+## Step 1: Derive Invocation Inputs Without Side Effects
 
-1. 确认 `TARGET_ROOT`。
-2. 为本次运行创建稳定 `RUN_ID` 和 `RUN_ROOT=<TARGET_ROOT>/.workflowprogram/runs/<RUN_ID>`。
-3. 调用：
-
-```text
-workflowprogram-python ${CLAUDE_PLUGIN_ROOT}/scripts/route-native-control-plane.py \
-  --target-root <TARGET_ROOT> \
-  --out <RUN_ROOT>/outputs/stages/control-plane-route.json \
-  --json
-```
-
-4. 若结果包含 `manual_migration_required=true`，继续 Native authoring，但在输出中明确这是旧 runtime 目标迁移，候选写入前必须有用户批准和样例验证证据。
-5. 将 `${CLAUDE_PLUGIN_ROOT}` 解析为插件安装目录的绝对路径。
+1. Confirm `TARGET_ROOT` from the current working directory or the user's
+   explicit target path.
+2. Derive a stable `RUN_ID`, `RUN_ROOT=<TARGET_ROOT>/.workflowprogram/runs/<RUN_ID>`,
+   and `operation=create|update|migrate` from read-only context only.
+3. Resolve `${CLAUDE_PLUGIN_ROOT}` to the plugin installation directory and build
+   the absolute product script path:
+   `<PLUGIN_ROOT>/workflows/workflowprogram-develop.js`.
+4. Do not create `RUN_ROOT`, run `route-native-control-plane.py`, write route
+   output, or create candidate/stage files before the product Workflow is
+   invoked. Route discovery, run-root creation, candidate staging, and manifest
+   writes are product Workflow ownership.
+5. If the current Claude Code session does not expose the `Workflow` tool, report
+   `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE` with the session JSONL path and do not
+   fall back to foreground `Agent`, `Bash`, `PowerShell`, `Write`, or direct
+   Python runner execution.
 
 ## Step 2: Launch Or Reinvoke Product JS
 

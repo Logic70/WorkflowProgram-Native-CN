@@ -228,6 +228,11 @@ the plugin `PreToolUse` hook:
   transcripts allow read-only shell probes but block foreground file edits,
   shell writes, and side-effect scripts. Creating run directories, route output
   files, candidate assets, or managed manifests is product Workflow ownership;
+- leaf entry skills must not instruct the foreground assistant to run
+  `route-native-control-plane.py`, create `RUN_ROOT`, or write route files before
+  the product `Workflow({ scriptPath, args })` call. They derive initial args
+  from read-only context and report `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE` if the
+  host session does not expose the Workflow tool;
 - controlled generation, validation, smoke, and apply remain explicit scripts
   selected by the product JS `nextAction`.
 - generated target-runtime wrappers delegate shared plugin scripts through a
