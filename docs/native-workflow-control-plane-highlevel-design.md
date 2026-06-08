@@ -183,6 +183,9 @@ FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个
 - 前台 leaf Skill 只保存完整 Workflow result 并运行 `workflowprogram-continue.py`。runner 从 product JS 返回的 `generationHandoff` / 顶层 result 字段原样派生 handoff 与 authoring spec；前台不得根据 LLD 或聊天上下文重写 JS body。
 - Generator 的 `--generation-handoff` 主路径必须验证 handoff 携带 `authoringSpec`，并验证磁盘 spec 与 handoff spec 等价；不一致时在创建 candidate 前失败。
 - `body` 是 meta 后的执行体，不是完整 JS 文件。`body` 内出现 `export const meta`、`import`、`require()`、`module.exports` 或重复完整文件头时属于 authoring spec 错误。
+- `authoringSpec` 支持两个互斥形态：小型 workflow 使用 `body` 直接给出 meta 后执行体；大型 workflow（6 个以上 phase，或预估 body 超过 15k 字符）使用 `template="sequential-agent-workflow-v1"` 加 `phase_contracts`，不得同时输出 `body`。
+- `phase_contracts` 是大工作流的紧凑控制面：每个条目描述一个顺序 phase 的 `phase`、`label`、`prompt`、`schema`，并可选声明 `detail`、`agentType`、`blockWhen`、`blockStatus`、`blockMessage`、`nextAction`。它表达阶段契约，不要求 Author agent 一次性生成完整 JS 源码。
+- Generator 对模板形态先做 deterministic render，再进入与 `body` 形态相同的 handoff/spec 等价校验、静态校验、ESM parse、smoke 和 controlled apply 流程。FreeSTRIDE 这类迁移不得回退到超大 `body` 输出。
 - Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查；动态代码执行不得用于隐藏宿主工具引用。
 - `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
 - `operation=migrate` 在 D1 Clarify 前补齐迁移默认 lens：成功信号是生成候选 Native JS 并具备 static validation / smoke evidence；subprocess 合约从现有 `.claude/` 与脚本资产在 Design / Explore 中发现；旧 `.workflowprogram/runtime` 默认 retained/deferred 为非活动资产，除非用户明确要求处置。

@@ -4310,3 +4310,645 @@ def test_sample_migration_authoring_spec_generates_only_native_workflow(tmp_path
     candidate = run_root / "outputs" / "candidate"
     assert (candidate / ".claude" / "workflows" / "workflowprogram-native-sample-migration.js").exists()
     assert not (candidate / ".workflowprogram").exists()
+
+
+# ── Template / phase_contracts authoring tests ────────────────────────
+
+TEMPLATE_AUTHORING_BASE: dict = {
+    "name": "template-probe",
+    "description": "Template-based minimal workflow probe.",
+    "phases": [{"title": "Probe", "detail": "Return PASS."}],
+    "template": "sequential-agent-workflow-v1",
+    "phase_contracts": [
+        {
+            "phase": "Probe",
+            "detail": "Return PASS.",
+            "label": "template-probe:probe",
+            "prompt": "Probe the request and return PASS.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["PASS"]},
+                },
+                "required": ["status"],
+            },
+        }
+    ],
+    "supporting_assets": [],
+    "asset_disposition": [],
+}
+
+
+def write_template_spec(
+    path: Path,
+    *,
+    name: str = "template-probe",
+    description: str = "Template-based minimal workflow probe.",
+    phases: list[dict[str, str]] | None = None,
+    template: str | None = "sequential-agent-workflow-v1",
+    phase_contracts: list[dict[str, object]] | None = _UNSET,
+    body: str | None = None,
+    supporting_assets: list[dict[str, str]] | None = None,
+    asset_disposition: list[dict[str, str]] | None = None,
+    task_model_policy: dict | None = None,
+) -> None:
+    # When template is provided and phase_contracts is not explicitly set,
+    # default to the TEMPLATE_AUTHORING_BASE contracts.
+    resolved_contracts = phase_contracts
+    if resolved_contracts is _UNSET:
+        resolved_contracts = TEMPLATE_AUTHORING_BASE["phase_contracts"] if template else None
+    payload: dict[str, object] = {
+        "name": name,
+        "description": description,
+        "phases": phases if phases is not None else [{"title": "Probe", "detail": "Return PASS."}],
+    }
+    if template is not None:
+        payload["template"] = template
+    if resolved_contracts is not None:
+        payload["phase_contracts"] = resolved_contracts
+    if body is not None:
+        payload["body"] = body
+    if supporting_assets is not None:
+        payload["supporting_assets"] = supporting_assets
+    else:
+        payload["supporting_assets"] = []
+    if asset_disposition is not None:
+        payload["asset_disposition"] = asset_disposition
+    else:
+        payload["asset_disposition"] = []
+    if task_model_policy is not None:
+        payload["task_model_policy"] = task_model_policy
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def test_template_authoring_spec_generates_valid_workflow(tmp_path: Path) -> None:
+    """Template + phase_contracts should generate a valid Native Workflow JS."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_template_spec(spec)
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+    payload = load_json(completed)
+    assert payload["status"] == "PASS"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    assert candidate.exists()
+    content = candidate.read_text(encoding="utf-8")
+    assert "export const meta" in content
+    assert "phase('Probe')" in content
+    assert "await agent(" in content
+    assert "status: 'PASS'" in content
+
+
+def test_template_authoring_spec_escapes_js_string_literals(tmp_path: Path) -> None:
+    """Template rendering must escape single-quoted JS literals."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    contracts = [
+        {
+            "phase": "Owner's Review",
+            "label": "template-probe:owner-review",
+            "prompt": "Review the owner boundary.",
+            "schema": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]},
+            "blockWhen": "result.status !== 'PASS'",
+            "blockStatus": "BLOCKED_OWNER'S_REVIEW",
+            "blockMessage": "Owner review blocked.",
+            "nextAction": "FIX_OWNER'S_REVIEW",
+        }
+    ]
+    write_template_spec(
+        spec,
+        phases=[{"title": "Owner's Review"}],
+        phase_contracts=contracts,
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    content = candidate.read_text(encoding="utf-8")
+    assert "phase('Owner\\'s Review')" in content
+    assert "status: 'BLOCKED_OWNER\\'S_REVIEW'" in content
+    assert "nextAction: 'FIX_OWNER\\'S_REVIEW'" in content
+
+
+def test_template_authoring_spec_old_body_still_works(tmp_path: Path) -> None:
+    """Old body-based authoring spec must still generate successfully (backward compat)."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_authoring_spec(spec, body="phase('Probe')\n\nreturn { status: 'PASS' }\n")
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+    payload = load_json(completed)
+    assert payload["status"] == "PASS"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "generated-probe.js"
+    assert candidate.exists()
+    content = candidate.read_text(encoding="utf-8")
+    assert "phase('Probe')" in content
+    assert "return { status: 'PASS' }" in content
+
+
+def test_template_authoring_spec_missing_body_and_template_fails(tmp_path: Path) -> None:
+    """Spec with neither body nor template+phase_contracts must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_template_spec(
+        spec,
+        template=None,
+        phase_contracts=None,
+        body=None,
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "body" in str(payload["errors"]).lower() or "template" in str(payload["errors"]).lower()
+
+
+def test_template_authoring_spec_body_and_template_both_provided_fails(tmp_path: Path) -> None:
+    """Spec with both body and template+phase_contracts must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    payload = {
+        **TEMPLATE_AUTHORING_BASE,
+        "body": "phase('Probe')\n\nreturn { status: 'PASS' }\n",
+    }
+    spec.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+
+
+def test_template_unknown_template_name_fails(tmp_path: Path) -> None:
+    """Unknown template name must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_template_spec(spec, template="nonexistent-template-v99")
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+
+
+def test_template_phase_contracts_empty_array_fails(tmp_path: Path) -> None:
+    """Empty phase_contracts must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    write_template_spec(spec, phase_contracts=[])
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+
+
+def test_template_phase_contracts_missing_required_field_fails(tmp_path: Path) -> None:
+    """Each phase_contract must have phase, label, prompt, and schema."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    bad_contracts = [
+        {
+            "phase": "Probe",
+            "label": "probe:probe",
+            # missing prompt and schema
+        }
+    ]
+    write_template_spec(spec, phase_contracts=bad_contracts)
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+
+
+def test_template_phase_contracts_duplicate_phase_fails(tmp_path: Path) -> None:
+    """Duplicate phase titles in phase_contracts must be rejected."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    dup_contracts = [
+        {
+            "phase": "Probe",
+            "label": "probe:probe-a",
+            "prompt": "First probe.",
+            "schema": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]},
+        },
+        {
+            "phase": "Probe",
+            "label": "probe:probe-b",
+            "prompt": "Second probe.",
+            "schema": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]},
+        },
+    ]
+    write_template_spec(spec, phase_contracts=dup_contracts)
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 1
+
+
+def test_template_phase_contracts_derives_phases_from_contracts(tmp_path: Path) -> None:
+    """When phases is not explicitly provided, it is derived from phase_contracts."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    contracts = [
+        {
+            "phase": "Intake",
+            "detail": "Validate inputs.",
+            "label": "target:intake",
+            "prompt": "Validate the request.",
+            "schema": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]},
+            "blockWhen": "result.status !== 'PASS'",
+            "blockStatus": "BLOCKED_INPUT",
+            "blockMessage": "Intake failed.",
+            "nextAction": "REINVOKE_WITH_ANSWERS",
+        },
+        {
+            "phase": "Deliver",
+            "detail": "Return final result.",
+            "label": "target:deliver",
+            "prompt": "Build the delivery report.",
+            "schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
+        },
+    ]
+    write_template_spec(spec, phases=[], phase_contracts=contracts)
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    content = candidate.read_text(encoding="utf-8")
+    # Verify phases were derived from contracts
+    assert '"title": "Intake"' in content
+    assert '"title": "Deliver"' in content
+    assert "phase('Intake')" in content
+    assert "phase('Deliver')" in content
+    # Verify gate block was rendered
+    assert "BLOCKED_INPUT" in content
+    assert "REINVOKE_WITH_ANSWERS" in content
+    # Verify non-blocking phase has no gate
+    assert "phase('Deliver')" in content
+    assert "status: 'PASS'" in content
+
+
+def test_template_freestride_level_multi_phase_contracts(tmp_path: Path) -> None:
+    """12-phase contracts (FreeSTRIDE scale) must generate without requiring body.
+
+    This proves that a large workflow avoids the token overflow caused by
+    the Author agent having to emit a full JS body inside StructuredOutput.
+    """
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+
+    freestride_phases = [
+        ("Intake", "Validate the request and inputs."),
+        ("Analyze", "Analyze the codebase structure."),
+        ("Design", "Design the implementation plan."),
+        ("ReviewDesign", "Review the design for correctness."),
+        ("Author", "Author the implementation."),
+        ("CodeReview", "Review the authored code."),
+        ("TestGen", "Generate test scenarios."),
+        ("SecurityReview", "Review for security issues."),
+        ("PerformanceReview", "Review for performance issues."),
+        ("StyleReview", "Review for style and maintainability."),
+        ("Validate", "Validate generated assets."),
+        ("Deliver", "Return final verified result."),
+    ]
+
+    contracts: list[dict[str, object]] = []
+    derived_phases: list[dict[str, str]] = []
+    for idx, (phase_name, detail) in enumerate(freestride_phases):
+        is_blocking = idx < len(freestride_phases) - 1
+        contract: dict[str, object] = {
+            "phase": phase_name,
+            "detail": detail,
+            "label": f"freestride:{phase_name.lower()}",
+            "prompt": f"Execute the {phase_name} phase for FreeSTRIDE workflow. {detail}",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["PASS", "BLOCKED"]},
+                    "blockingIssues": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["status", "blockingIssues"],
+            },
+        }
+        if is_blocking:
+            contract["blockWhen"] = "result.status !== 'PASS'"
+            contract["blockStatus"] = f"BLOCKED_{phase_name.upper()}"
+            contract["blockMessage"] = f"{phase_name} gate blocked."
+            contract["nextAction"] = "FIX_AND_REINVOKE"
+        contracts.append(contract)
+        derived_phases.append({"title": phase_name, "detail": detail})
+
+    write_template_spec(
+        spec,
+        name="freestride-native",
+        description="FreeSTRIDE-scale 12-phase Native Workflow JS probe.",
+        phases=derived_phases,
+        phase_contracts=contracts,
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+    payload = load_json(completed)
+    assert payload["status"] == "PASS"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "freestride-native.js"
+    assert candidate.exists()
+    content = candidate.read_text(encoding="utf-8")
+
+    # All 12 phases must be present
+    for phase_name, _detail in freestride_phases:
+        assert f"phase('{phase_name}')" in content, f"Missing phase: {phase_name}"
+        assert f'label: "freestride:{phase_name.lower()}"' in content
+
+    # Verify gate blocks were rendered for non-terminal phases
+    assert "BLOCKED_INTAKE" in content
+    assert "BLOCKED_ANALYZE" in content
+
+    # Terminal phase has no gate, returns PASS
+    assert "status: 'PASS'" in content.split("phase('Deliver')")[1]
+
+    # Verify the spec has no body field (compact mode)
+    raw_spec = json.loads(spec.read_text(encoding="utf-8"))
+    assert raw_spec.get("template") == "sequential-agent-workflow-v1"
+    assert len(raw_spec["phase_contracts"]) == 12
+    assert "body" not in raw_spec or raw_spec.get("body") in (None, "")
+
+    # Verify there are 12 phases in the generated meta
+    assert content.count("phase('") == 12
+
+
+def test_template_handoff_integration_passes(tmp_path: Path) -> None:
+    """Template authoring spec must work through the full handoff gate pipeline."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_template_spec(spec)
+    write_handoff_packet(
+        handoff,
+        target_root=target,
+        run_root=run_root,
+        authoring_spec={
+            **TEMPLATE_AUTHORING_BASE,
+        },
+    )
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+    payload = load_json(completed)
+    assert payload["status"] == "PASS"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    assert candidate.exists()
+
+    # Handoff report must pass
+    handoff_report = run_root / "outputs" / "stages" / "native-workflow-generation-handoff.json"
+    assert handoff_report.exists()
+    report_data = json.loads(handoff_report.read_text(encoding="utf-8"))
+    assert report_data["status"] == "PASS"
+    assert report_data["errors"] == []
+
+
+def test_template_handoff_blocks_body_and_template_both_provided(tmp_path: Path) -> None:
+    """Handoff must block when authoringSpec has both body and template."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_template_spec(spec)
+    write_handoff_packet(
+        handoff,
+        target_root=target,
+        run_root=run_root,
+        authoring_spec={
+            **TEMPLATE_AUTHORING_BASE,
+            "body": "phase('Probe')\n\nreturn { status: 'PASS' }\n",
+        },
+    )
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "BOTH_BODY_AND_TEMPLATE" in str(payload["errors"])
+
+
+def test_template_handoff_blocks_missing_body_and_template(tmp_path: Path) -> None:
+    """Handoff must block when authoringSpec has neither body nor template."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    handoff = tmp_path / "handoff.json"
+    target.mkdir()
+    write_template_spec(spec)
+    write_handoff_packet(
+        handoff,
+        target_root=target,
+        run_root=run_root,
+        authoring_spec={
+            "name": "no-body-no-template",
+            "description": "Should fail.",
+            "phases": [{"title": "Probe"}],
+            "supporting_assets": [],
+            "asset_disposition": [],
+        },
+    )
+
+    completed = run_generator_handoff(spec, target, run_root, handoff, "--json")
+    assert completed.returncode == 1
+    payload = load_json(completed)
+    assert payload["status"] == "FAIL"
+    assert "HANDOFF_AUTHORING_SPEC_BODY" in str(payload["errors"])
+
+
+def test_template_authoring_spec_with_agent_type_and_model(tmp_path: Path) -> None:
+    """Phase contracts with agentType should render correctly."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    contracts = [
+        {
+            "phase": "Review",
+            "detail": "Review with a specialized agent.",
+            "label": "target:review",
+            "prompt": "Review the content for correctness.",
+            "agentType": "workflowprogram-native-cn:logic-reviewer",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["PASS", "BLOCKED"]},
+                    "findings": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["status", "findings"],
+            },
+        }
+    ]
+    write_template_spec(
+        spec,
+        name="agent-type-probe",
+        phase_contracts=contracts,
+        phases=[{"title": "Review", "detail": "Review with a specialized agent."}],
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "agent-type-probe.js"
+    content = candidate.read_text(encoding="utf-8")
+    assert 'agentType: "workflowprogram-native-cn:logic-reviewer"' in content
+
+
+def test_template_authoring_spec_task_model_policy_injected(tmp_path: Path) -> None:
+    """Template-generated workflow with task_model_policy must inject workflowprogramAgent."""
+    spec = tmp_path / "spec.json"
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    contracts = [
+        {
+            "phase": "Probe",
+            "label": "template-probe:probe",
+            "prompt": "Probe the request.",
+            "schema": {
+                "type": "object",
+                "properties": {"status": {"type": "string"}},
+                "required": ["status"],
+            },
+        }
+    ]
+    write_template_spec(
+        spec,
+        phase_contracts=contracts,
+        task_model_policy={"agent_task_models": {"template-probe:probe": "architecture"}},
+    )
+
+    completed = run_generator(spec, target, run_root, "--json")
+    assert completed.returncode == 0, f"stderr: {completed.stderr}\nstdout: {completed.stdout}"
+
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    content = candidate.read_text(encoding="utf-8")
+    assert "workflowprogramAgent" in content
+    assert "agentTaskTypes" in content
+    assert "withTaskModel" in content
+
+
+def test_develop_authoring_spec_with_template_passes_has_authoring_spec() -> None:
+    """The JS hasAuthoringSpec gate must accept a template-based authoringSpec."""
+    template_authoring = {
+        "status": "PASS",
+        "authoringSpec": {
+            "name": "template-probe",
+            "description": "Template-based workflow.",
+            "phases": [{"title": "Probe", "detail": "Return PASS."}],
+            "template": "sequential-agent-workflow-v1",
+            "phase_contracts": [
+                {
+                    "phase": "Probe",
+                    "label": "template-probe:probe",
+                    "prompt": "Probe.",
+                    "schema": {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]},
+                }
+            ],
+            "supporting_assets": [],
+            "asset_disposition": [],
+        },
+        "blockingIssues": [],
+    }
+    exploration = {
+        "status": "PASS",
+        "findings": ["Template workflow."],
+        "constraints": [],
+        "blockingIssues": [],
+    }
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(),
+        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence(), template_authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert execution["result"]["nextAction"] == "RUN_CONTROLLED_GENERATION"
+    assert execution["result"]["authoringSpec"]["template"] == "sequential-agent-workflow-v1"
+    assert len(execution["result"]["authoringSpec"]["phase_contracts"]) == 1
+
+
+def test_develop_authoring_spec_body_still_accepted() -> None:
+    """The JS hasAuthoringSpec gate must continue to accept body-based authoringSpec."""
+    body_authoring = {
+        "status": "PASS",
+        "authoringSpec": authoring_spec_payload(),
+        "blockingIssues": [],
+    }
+    exploration = {
+        "status": "PASS",
+        "findings": ["Body workflow."],
+        "constraints": [],
+        "blockingIssues": [],
+    }
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(),
+        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence(), body_authoring],
+    )
+
+    assert execution["result"]["status"] == "READY_FOR_GENERATION"
+    assert execution["result"]["nextAction"] == "RUN_CONTROLLED_GENERATION"
+    assert execution["result"]["authoringSpec"]["body"] == "phase('Probe')\n\nreturn { status: 'PASS' }\n"
+
+
+def test_develop_authoring_spec_missing_body_and_template_blocks() -> None:
+    """The JS hasAuthoringSpec gate must reject spec with neither body nor template."""
+    bad_authoring = {
+        "status": "PASS",
+        "authoringSpec": {
+            "name": "bad-spec",
+            "description": "No body or template.",
+            "phases": [{"title": "Probe"}],
+            # no body, no template, no phase_contracts
+            "supporting_assets": [],
+            "asset_disposition": [],
+        },
+        "blockingIssues": [],
+    }
+    exploration = {
+        "status": "PASS",
+        "findings": ["Bad spec."],
+        "constraints": [],
+        "blockingIssues": [],
+    }
+    execution = execute_native_workflow(
+        DEVELOP_WORKFLOW,
+        develop_args(),
+        agent_results=[exploration, exploration, pass_design_evidence(), pass_review_evidence(), bad_authoring],
+    )
+
+    assert execution["result"]["status"] == "BLOCKED_GENERATION"

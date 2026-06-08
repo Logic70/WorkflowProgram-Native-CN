@@ -385,6 +385,27 @@ M11 v1 已完成：
 - `validate-native-authoring-readiness.py` 接受 camelCase runtime key 与 snake_case legacy key，并拒绝无法映射的第三套 lens key。
 - `build-native-interactive-smoke.py evaluate` 支持 `--required-agent-attribution`，用于检查真实 JSONL 中的注册 Agent 归因。
 
+### M20. 本次实施：大工作流 Authoring 模板化
+
+问题来源：
+
+- FreeSTRIDE 迁移会话中的 `wf_19ff0fb6-295` 证明，12-phase 级别目标 workflow 若要求 Author agent 在 `StructuredOutput` 中返回完整 JS body，容易触发 `max_tokens` 截断，随后出现空 `{}` 结构化输出和 schema 缺字段错误。
+- 该问题不属于 FreeSTRIDE 目标设计问题，而是 WPN Author / Generate 边界过度依赖模型一次性生成大段 JS 源码。
+
+范围：
+
+- `workflowprogram-develop.js` 的 Author prompt 明确两种互斥输出形态：小 workflow 使用 `authoringSpec.body`；大 workflow 使用 `authoringSpec.template="sequential-agent-workflow-v1"` 与 `authoringSpec.phase_contracts`。
+- `hasAuthoringSpec` gate 接受 `body` 或 `template + phase_contracts`，并继续拒绝缺少 authoring body source 的 spec。
+- `generate-native-workflow.py` 验证 `body` 与 `template` 不得同时存在或同时缺失，拒绝未知 template、空 contracts、重复 phase/label、缺少 phase/label/prompt/schema 的 contract。
+- `generate-native-workflow.py` 对 `sequential-agent-workflow-v1` 做 deterministic render：每个 contract 生成一个 `phase()` 和一个 `agent()`，可选 `blockWhen` 生成提前返回 gate；render 后继续沿用既有静态校验、handoff/spec 等价校验和 task model 注入。
+- 增加 FreeSTRIDE 规模的 12-phase 回归测试，证明大 workflow 可通过 `phase_contracts` 生成候选 JS，而不需要 Author agent 输出完整 body。
+
+准出条件：
+
+- `tests/unit/test_native_workflow_js.py` 覆盖 body 模式兼容、template 模式生成、缺 body/template、body+template 同时存在、未知 template、空 contracts、缺必填字段、重复 phase、由 contracts 派生 phases、12-phase FreeSTRIDE 规模、handoff 集成和 task model 注入。
+- `validate-workflow.py`、目标单测、dist build、版本一致性和插件更新通过。
+- 重新触发 FreeSTRIDE 迁移时，Author 阶段不得再因超大 `authoringSpec.body` 截断而失败；如后续失败，应分类为新的 WPN gate/foreground/interoperability 问题。
+
 ### M14. 已完成：Legacy 下线评估
 
 当前状态：

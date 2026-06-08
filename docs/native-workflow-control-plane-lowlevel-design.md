@@ -142,7 +142,7 @@ project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ nam
 | D2 Confirm | 获得用户确认 | requirement packet | 检查 `confirmedByUser` | confirmed packet | `confirmedByUser=true` | `READY_FOR_CONFIRMATION` | 可选 run evidence | confirmation result |
 | D3 Design | 生成 High-Level 和 Low-Level 设计 | confirmed packet、目标上下文 | 并行探索；串行整合 HLD、LLD、trace | design docs | 边界、输入输出、gate、测试完整 | `BLOCKED_DESIGN` | candidate design docs | design summary |
 | D4 Review | 审视设计闭合 | design docs、requirements | 独立 Agent review；JS 过滤 blocker | review verdict、issues | 无 blocker | `BLOCKED_DESIGN_REVIEW` | review report | closure report |
-| D5 Author | 生成 run-scoped authoring spec | approved design、review verdict | 专用 Authoring Spec Agent 将设计收敛为严格 JSON，不写文件 | `authoringSpec` | schema 合法、body 不含完整文件头、L3 事实边界清楚 | `BLOCKED_GENERATION` | authoring spec | authoring evidence |
+| D5 Author | 生成 run-scoped authoring spec | approved design、review verdict | 专用 Authoring Spec Agent 将设计收敛为严格 JSON，不写文件；小 workflow 输出 `body`，大 workflow 输出 `template + phase_contracts` | `authoringSpec` | schema 合法，`body` 与 `template` 互斥，phase contract 完整，L3 事实边界清楚 | `BLOCKED_GENERATION` | authoring spec | authoring evidence |
 | D6 Generate | 生成 Native JS 和按需 assets | `READY_FOR_GENERATION.authoringSpec` | 前台只保存完整 Workflow 结果并运行 `workflowprogram-continue.py`；continuation runner 写 handoff/spec、调用 deterministic renderer、再生成 evidence | candidate tree | 资产范围合规，handoff/spec 匹配 | `BLOCKED_GENERATION` | candidate tree | generation report |
 | D7 Validate | 执行 L1 / L2 / L3 校验 | candidate tree | 静态校验、ESM module parse、按需领域脚本 | validation report | 硬错误为零，module parse PASS | `BLOCKED_VALIDATION` | validation report | rule results |
 | D8 Smoke | 验证真实交互式运行 | validation PASS | discovery、launch、Agent、schema、gate、blocker smoke | smoke evidence | 最低 smoke PASS | `BLOCKED_SMOKE` | smoke evidence | transcript、JSONL |
@@ -357,10 +357,34 @@ Authoring Spec Agent 的输出 schema：
 | `authoringSpec.name` | `[a-z0-9][a-z0-9-]*` |
 | `authoringSpec.description` | 非空字符串 |
 | `authoringSpec.phases[]` | 非空 `{title, detail?}`，title 与最终 `phase()` 对齐 |
-| `authoringSpec.body` | meta 后执行体；不得包含 `export const meta` 或完整 JS module header |
+| `authoringSpec.body` | 小 workflow 使用；meta 后执行体；不得包含 `export const meta` 或完整 JS module header |
+| `authoringSpec.template` | 大 workflow 使用；当前允许 `sequential-agent-workflow-v1` |
+| `authoringSpec.phase_contracts[]` | 大 workflow 使用；非空 phase contract 列表，与 `body` 互斥 |
 | `authoringSpec.supporting_assets` | 默认空；每项必须有 kind/path/content/reason |
 | `authoringSpec.task_model_policy.agent_task_models` | 可选 label -> logical task type |
 | `blockingIssues` | `status=BLOCKED` 时说明阻断原因 |
+
+Authoring Spec Agent 必须在两种输出形态中选择一种：
+
+- `body` 形态：用于 5 个以内简单 phase、预估 JS body 不超过 15k 字符的 workflow。`body` 是完整可执行体，但不包含 `meta`、`import`、`require()`、`module.exports` 或完整文件头。
+- `template + phase_contracts` 形态：用于 6 个以上 phase、迁移型复杂 workflow、或预估 body 超过 15k 字符的 workflow。此形态不得输出 `body`，由 generator deterministic render 目标 JS body，避免 Author agent 的 StructuredOutput 因超长 JS 截断。
+
+`phase_contracts[]` 的每个条目必须满足：
+
+| 字段 | 必填 | 约束 |
+|---|---|---|
+| `phase` | 是 | phase title，必须与 `authoringSpec.phases[].title` 顺序一致；若 `phases` 为空，generator 从 contracts 派生 |
+| `label` | 是 | 唯一 Agent label |
+| `prompt` | 是 | 该 phase 的完整 Agent prompt |
+| `schema` | 是 | JSON Schema object，gate 消费字段必须声明 |
+| `detail` | 否 | phase 描述，写入 `meta.phases[*].detail` |
+| `agentType` | 否 | 注册 Agent 类型；仅跨 workflow 复用或独立版本管理时使用 |
+| `blockWhen` | 否 | 使用 `result` 变量的 JS 条件表达式，truthy 时提前返回阻断 |
+| `blockStatus` | 否 | 阻断状态；缺省为 `BLOCKED` |
+| `blockMessage` | 否 | 写入 `blockingIssues` 的说明 |
+| `nextAction` | 否 | 阻断后的建议动作 |
+
+Generator 必须在创建 candidate 前验证：`body` 与 `template` 不得同时存在；二者也不得同时缺失；未知 `template` 拒绝；`phase_contracts` 不得为空、不得重复 `phase` 或 `label`，必填字段缺失时返回 `AUTHORING_SPEC_INVALID` 或 handoff 对应错误。模板渲染完成后继续执行既有 `meta` 对齐、module parse、handoff/spec 等价和 task model 注入校验。
 
 前台 Skill 在 Step 4 只能保存产品 JS 返回的完整 Workflow result，然后调用 `workflowprogram-continue.py`。该 runner 从 product-owned `generationHandoff` 或顶层 result 字段派生 `RUN_ROOT/outputs/stages/native-workflow-generation-handoff-input.json` 和 `RUN_ROOT/native-workflow-authoring.json`，再调用 generator。前台不得手写或修补 handoff/spec；如果 `READY_FOR_GENERATION` 不含 `authoringSpec`，或磁盘 spec 与 handoff spec 不一致，generator 必须返回 `BLOCKED_GENERATION`。
 

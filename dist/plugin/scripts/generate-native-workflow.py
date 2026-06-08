@@ -29,6 +29,13 @@ AUTHORING_BODY_FORBIDDEN = {
     "AUTHORING_BODY_CONTAINS_MODULE_EXPORTS": re.compile(r"\bmodule\.exports\b"),
     "AUTHORING_BODY_CONTAINS_REQUIRE": re.compile(r"\brequire\s*\("),
 }
+TEMPLATES: dict[str, dict[str, object]] = {
+    "sequential-agent-workflow-v1": {
+        "description": "Sequential agent phases — one agent() per phase with optional gate blocks.",
+        "version": 1,
+    },
+}
+
 SUPPORTING_ASSET_RULES = {
     "skill": (".claude/skills/", "/SKILL.md"),
     "agent": (".claude/agents/", ".md"),
@@ -272,12 +279,24 @@ def validate_handoff(path: Path, target_root: Path, run_root: Path) -> dict[str,
     if not isinstance(authoring_spec, dict):
         errors.append({"rule": "HANDOFF_AUTHORING_SPEC_MISSING", "message": "authoringSpec object is required."})
     else:
-        for field in ("name", "description", "body"):
+        for field in ("name", "description"):
             if not isinstance(authoring_spec.get(field), str) or not authoring_spec[field].strip():
                 errors.append({"rule": f"HANDOFF_AUTHORING_SPEC_{field.upper()}", "message": f"authoringSpec.{field} must be a non-empty string."})
         phases = authoring_spec.get("phases")
         if not isinstance(phases, list) or not phases:
             errors.append({"rule": "HANDOFF_AUTHORING_SPEC_PHASES", "message": "authoringSpec.phases must be a non-empty array."})
+        body = authoring_spec.get("body")
+        template_val = authoring_spec.get("template")
+        phase_contracts = authoring_spec.get("phase_contracts")
+        has_body = isinstance(body, str) and body.strip()
+        has_template = isinstance(template_val, str) and template_val.strip() and isinstance(phase_contracts, list) and len(phase_contracts) > 0
+        if not has_body and not has_template:
+            errors.append({"rule": "HANDOFF_AUTHORING_SPEC_BODY", "message": "authoringSpec must have either a non-empty body or both template and phase_contracts."})
+        if has_body and has_template:
+            errors.append({"rule": "HANDOFF_AUTHORING_SPEC_BOTH_BODY_AND_TEMPLATE", "message": "authoringSpec must not provide both body and template+phase_contracts."})
+        if has_template:
+            if template_val not in TEMPLATES:
+                errors.append({"rule": "HANDOFF_AUTHORING_SPEC_TEMPLATE_UNKNOWN", "message": f"authoringSpec.template must be one of {sorted(TEMPLATES)}."})
 
     # --- migrate/update asset disposition -------------------------------------
     gen_op = str(gen_req.get("operation", "")).strip() if isinstance(gen_req, dict) else ""
@@ -377,6 +396,82 @@ def load_readiness_validator_module():
     return module
 
 
+def normalize_phase_contracts(value: Any) -> list[dict[str, Any]]:
+    """Validate and normalize phase_contracts for template-based authoring.
+
+    Each phase_contract describes one sequential phase with:
+    - phase (required): title string
+    - detail (optional): description string
+    - label (required): agent label string
+    - prompt (required): agent prompt body
+    - agentType (optional): registered agent type
+    - schema (required): JSON Schema object for structured output
+    - blockWhen (optional): JS expression that triggers a block
+    - blockStatus (optional): status to emit on block (default depends on phase)
+    - blockMessage (optional): blocking issue message
+    - nextAction (optional): recommended next action on block
+    """
+    if not isinstance(value, list) or not value:
+        raise ValueError("`phase_contracts` must be a non-empty array.")
+    normalized: list[dict[str, Any]] = []
+    seen_phases: set[str] = set()
+    seen_labels: set[str] = set()
+    for index, pc in enumerate(value):
+        if not isinstance(pc, dict):
+            raise ValueError(f"`phase_contracts[{index}]` must be an object.")
+        phase_title = str(pc.get("phase", "")).strip()
+        detail = str(pc.get("detail", "")).strip()
+        label = str(pc.get("label", "")).strip()
+        prompt = str(pc.get("prompt", "")).strip()
+        agent_type = str(pc.get("agentType", "")).strip() or None
+        schema = pc.get("schema")
+        block_when = str(pc.get("blockWhen", "")).strip() or None
+        block_status = str(pc.get("blockStatus", "")).strip() or None
+        block_message = str(pc.get("blockMessage", "")).strip() or None
+        next_action = str(pc.get("nextAction", "")).strip() or None
+
+        if not phase_title:
+            raise ValueError(f"`phase_contracts[{index}].phase` must be a non-empty string.")
+        if phase_title in seen_phases:
+            raise ValueError(f"Duplicate phase_contracts phase: {phase_title}")
+        seen_phases.add(phase_title)
+
+        if not label:
+            raise ValueError(f"`phase_contracts[{index}].label` must be a non-empty string.")
+        if label in seen_labels:
+            raise ValueError(f"Duplicate phase_contracts label: {label}")
+        seen_labels.add(label)
+
+        if not prompt:
+            raise ValueError(f"`phase_contracts[{index}].prompt` must be a non-empty string.")
+
+        if not isinstance(schema, dict):
+            raise ValueError(f"`phase_contracts[{index}].schema` must be a JSON Schema object.")
+        if not schema.get("type"):
+            raise ValueError(f"`phase_contracts[{index}].schema` must declare a `type`.")
+
+        entry: dict[str, Any] = {
+            "phase": phase_title,
+            "label": label,
+            "prompt": prompt,
+            "schema": schema,
+        }
+        if detail:
+            entry["detail"] = detail
+        if agent_type:
+            entry["agentType"] = agent_type
+        if block_when is not None:
+            entry["blockWhen"] = block_when
+            if block_status:
+                entry["blockStatus"] = block_status
+            if block_message:
+                entry["blockMessage"] = block_message
+            if next_action:
+                entry["nextAction"] = next_action
+        normalized.append(entry)
+    return normalized
+
+
 def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
     """Validate and normalize one JSON authoring spec payload."""
 
@@ -390,11 +485,19 @@ def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
         raise ValueError("`name` must match `[a-z0-9][a-z0-9-]*`.")
     if not description:
         raise ValueError("`description` must be a non-empty string.")
-    if not isinstance(phases, list) or not phases:
-        raise ValueError("`phases` must be a non-empty array.")
+    template = str(payload.get("template", "")).strip() or None
+    raw_phase_contracts = payload.get("phase_contracts")
+    has_body = isinstance(body, str) and body.strip()
+    has_template = isinstance(template, str) and template.strip() and isinstance(raw_phase_contracts, list) and len(raw_phase_contracts) > 0
+
+    if not has_body and not has_template:
+        raise ValueError("Either `body` or both `template` and `phase_contracts` must be provided.")
+    if has_body and has_template:
+        raise ValueError("Provide either `body` or `template`+`phase_contracts`, not both.")
+
     titles: list[str] = []
     normalized_phases: list[dict[str, str]] = []
-    for index, phase in enumerate(phases):
+    for index, phase in enumerate(phases if isinstance(phases, list) else []):
         if not isinstance(phase, dict):
             raise ValueError(f"`phases[{index}]` must be an object.")
         title = str(phase.get("title", "")).strip()
@@ -408,21 +511,54 @@ def normalize_authoring_spec_payload(payload: Any) -> dict[str, Any]:
         if detail:
             normalized["detail"] = detail
         normalized_phases.append(normalized)
-    if not isinstance(body, str) or not body.strip():
-        raise ValueError("`body` must be a non-empty JavaScript string.")
-    validate_authoring_body(body)
+
+    if has_template:
+        if template not in TEMPLATES:
+            raise ValueError(f"`template` must be one of {sorted(TEMPLATES)}.")
+        if phases is not None and not isinstance(phases, list):
+            raise ValueError("`phases` must be an array when template authoring is used.")
+        normalized_phase_contracts = normalize_phase_contracts(raw_phase_contracts)
+        # Derive phases from phase_contracts when template is used
+        derived_phases: list[dict[str, str]] = []
+        for pc in normalized_phase_contracts:
+            phase_entry: dict[str, str] = {"title": pc["phase"]}
+            if pc.get("detail"):
+                phase_entry["detail"] = pc["detail"]
+            derived_phases.append(phase_entry)
+        # Validate no mismatch if both phases and phase_contracts provided
+        if normalized_phases:
+            phase_titles = [p.get("title", "") for p in normalized_phases]
+            derived_titles = [p["title"] for p in derived_phases]
+            if phase_titles != derived_titles:
+                raise ValueError(
+                    f"`phases` titles must match `phase_contracts` phase values when both are provided."
+                )
+        else:
+            normalized_phases = derived_phases
+    else:
+        if not isinstance(phases, list) or not phases:
+            raise ValueError("`phases` must be a non-empty array.")
+        normalized_phase_contracts = None
+        validate_authoring_body(body)
+
     supporting_assets = normalize_supporting_assets(payload.get("supporting_assets", []))
     asset_disposition = normalize_asset_disposition(payload.get("asset_disposition", []), supporting_assets)
     task_model_policy = normalize_task_model_policy(payload.get("task_model_policy"))
-    return {
+    result: dict[str, Any] = {
         "name": name,
         "description": description,
         "phases": normalized_phases,
-        "body": body.strip() + "\n",
         "supporting_assets": supporting_assets,
         "asset_disposition": asset_disposition,
         "task_model_policy": task_model_policy,
     }
+    if has_template:
+        result["template"] = template
+        result["phase_contracts"] = normalized_phase_contracts
+        result["body"] = ""
+    else:
+        result["body"] = body.strip() + "\n"
+    return result
 
 
 def load_authoring_spec(path: Path) -> dict[str, Any]:
@@ -440,7 +576,7 @@ def validate_handoff_spec_alignment(spec: dict[str, Any], handoff_path: Path) ->
         handoff_spec = normalize_authoring_spec_payload(packet.get("authoringSpec"))
     except Exception as exc:
         return [{"rule": "HANDOFF_AUTHORING_SPEC_INVALID", "message": f"authoringSpec is invalid: {exc}"}]
-    comparable_keys = ("name", "description", "phases", "body", "supporting_assets", "asset_disposition", "task_model_policy")
+    comparable_keys = ("name", "description", "phases", "body", "template", "phase_contracts", "supporting_assets", "asset_disposition", "task_model_policy")
     for key in comparable_keys:
         if spec.get(key) != handoff_spec.get(key):
             errors.append({"rule": "HANDOFF_AUTHORING_SPEC_MISMATCH", "message": f"Disk spec field `{key}` does not match READY_FOR_GENERATION.authoringSpec."})
@@ -590,6 +726,91 @@ def normalize_task_model_policy(value: Any) -> dict[str, Any]:
     return {"agent_task_models": agent_task_models}
 
 
+def js_single_quoted(value: Any) -> str:
+    """Return a JavaScript single-quoted string literal."""
+
+    text = str(value)
+    escaped = (
+        text.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+    return f"'{escaped}'"
+
+
+def render_template_body(name: str, phase_contracts: list[dict[str, Any]]) -> str:
+    """Render the executable JS body for ``sequential-agent-workflow-v1``."""
+
+    lines: list[str] = []
+    lines.append(f"const workflowName = {js_single_quoted(name)}")
+    lines.append("const launchMode = 'plugin-script-path'")
+    lines.append("const runId = args?.runId || ''")
+    lines.append("")
+
+    for pc in phase_contracts:
+        phase_title = pc["phase"]
+        label = pc["label"]
+        prompt = pc["prompt"]
+        schema = pc["schema"]
+        agent_type = pc.get("agentType")
+        block_when = pc.get("blockWhen")
+        block_status = pc.get("blockStatus", "BLOCKED")
+        block_message = pc.get("blockMessage", f"{phase_title} gate blocked.")
+        next_action = pc.get("nextAction")
+
+        lines.append(f"phase({js_single_quoted(phase_title)})")
+        lines.append("")
+
+        # Build agent options
+        agent_lines: list[str] = []
+        agent_lines.append(f"      label: {json.dumps(label, ensure_ascii=False)},")
+        if agent_type:
+            agent_lines.append(f"      agentType: {json.dumps(agent_type, ensure_ascii=False)},")
+        agent_lines.append(f"      schema: {json.dumps(schema, ensure_ascii=False)},")
+        agent_opts = "\n".join(agent_lines)
+
+        lines.append("{")
+        lines.append("  const result = await agent(")
+        lines.append(f"    {json.dumps(prompt, ensure_ascii=False)},")
+        lines.append("    {")
+        lines.append(agent_opts)
+        lines.append("    },")
+        lines.append("  )")
+        lines.append("")
+
+        if block_when:
+            extra_lines: list[str] = []
+            if next_action:
+                extra_lines.append(f"    nextAction: {js_single_quoted(next_action)},")
+            lines.append(f"if ({block_when}) {{")
+            lines.append("  return {")
+            lines.append(f"    status: {js_single_quoted(block_status)},")
+            lines.append("    workflow: workflowName,")
+            lines.append("    launchMode,")
+            lines.append("    runId,")
+            lines.extend(extra_lines)
+            lines.append(f"    blockingIssues: [{json.dumps(block_message)}],")
+            lines.append("  }")
+            lines.append("}")
+            lines.append("")
+
+        lines.append("}")
+        lines.append("")
+
+    lines.append("return {")
+    lines.append("  status: 'PASS',")
+    lines.append("  workflow: workflowName,")
+    lines.append("  launchMode,")
+    lines.append("  runId,")
+    lines.append("  blockingIssues: [],")
+    lines.append("}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_workflow(spec: dict[str, Any]) -> str:
     """Render a deterministic Native Workflow JS file."""
 
@@ -600,7 +821,12 @@ def render_workflow(spec: dict[str, Any]) -> str:
     }
     task_policy = spec.get("task_model_policy") or {}
     agent_task_models = task_policy.get("agent_task_models") or {}
-    body = spec["body"]
+
+    if spec.get("template") and spec.get("phase_contracts"):
+        body = render_template_body(spec["name"], spec["phase_contracts"])
+    else:
+        body = spec.get("body", "")
+
     if agent_task_models:
         body = AGENT_CALL_PATTERN.sub("workflowprogramAgent(", body)
         helper = (
