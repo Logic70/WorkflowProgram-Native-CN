@@ -225,6 +225,11 @@ the plugin `PreToolUse` hook:
   latest user request contains WPN / WorkflowProgram Native intent. This makes
   the product Workflow invocation a hook-enforced entry boundary instead of a
   skill-description convention;
+- Claude Code plan-mode detours are blocked for WPN intent and active WPN
+  states. The hook covers `ExitPlanMode`, and file-tool checks reject writes to
+  `.claude/plans/*.md`; after external confirmation the foreground assistant
+  must invoke the product Workflow directly instead of asking for another plan
+  approval;
 - before a foreground guard state exists, WPN / WorkflowProgram Native
   transcripts allow read-only shell probes but block foreground file edits,
   shell writes, and side-effect scripts. Creating run directories, route output

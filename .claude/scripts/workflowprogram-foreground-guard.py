@@ -47,6 +47,10 @@ AGENT_TOOLS = {
     "Task",
 }
 
+PLAN_MODE_TOOLS = {
+    "ExitPlanMode",
+}
+
 WPN_INTENT_PATTERNS = (
     r"\bWPN\b",
     r"\bWorkflowProgram\b",
@@ -425,6 +429,11 @@ def input_paths(value: Any) -> Iterable[str]:
                 yield from input_paths(value[key])
 
 
+def is_claude_plan_path(path: Path) -> bool:
+    normalized = str(path).replace("\\", "/").lower()
+    return "/.claude/plans/" in normalized and normalized.endswith(".md")
+
+
 def is_managed_target_path(path: Path, state: dict[str, Any]) -> bool:
     target_root = Path(str(state.get("targetRoot") or ""))
     run_root = Path(str(state.get("runRoot") or ""))
@@ -539,12 +548,22 @@ def allow(reason: str = "allowed") -> int:
 def check_file_tool(payload: dict[str, Any], state: dict[str, Any] | None) -> int:
     if not state:
         if has_wpn_intent(payload):
+            for raw_path in input_paths(tool_input(payload)):
+                if is_claude_plan_path(Path(raw_path)):
+                    return block(
+                        "WorkflowProgram Native requests must not be converted into Claude Code plan-mode files; invoke the product Workflow directly.",
+                    )
             return block(
                 "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground file edit.",
             )
         return allow("no-state")
     for raw_path in input_paths(tool_input(payload)):
         path = Path(raw_path)
+        if is_claude_plan_path(path) and (state or has_wpn_intent(payload)):
+            return block(
+                "WorkflowProgram Native requests must not be converted into Claude Code plan-mode files; invoke the product Workflow directly.",
+                state,
+            )
         if is_managed_target_path(path, state):
             return block(
                 "Foreground file tools must not edit managed target workflow assets; use candidate generation and managed apply.",
@@ -594,6 +613,17 @@ def check_agent_tool(payload: dict[str, Any]) -> int:
     return block(
         "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground Agent exploration.",
     )
+
+
+def check_plan_tool(payload: dict[str, Any]) -> int:
+    found = find_state_from_path(Path(str(payload.get("cwd") or os.getcwd())))
+    state = current_state_from_found(payload, found)
+    if state or has_wpn_intent(payload):
+        return block(
+            "WorkflowProgram Native requests must not enter Claude Code plan mode; invoke the product Workflow directly and follow its nextAction.",
+            state,
+        )
+    return allow("plan-non-wpn")
 
 
 def unwrap_result_envelope(payload: dict[str, Any]) -> dict[str, Any]:
@@ -663,6 +693,8 @@ def command_record(args: argparse.Namespace) -> int:
 def command_check(_: argparse.Namespace) -> int:
     payload = hook_payload()
     name = tool_name(payload)
+    if name in PLAN_MODE_TOOLS:
+        return check_plan_tool(payload)
     if name in AGENT_TOOLS:
         return check_agent_tool(payload)
     if name in DIRECT_FILE_WRITE_TOOLS:

@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T15:18:41Z",
+  "generated_at": "2026-06-08T15:38:35Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.26",
-  "source_commit": "57f0d5135ce550b2d2a03884e3bcc813429b64be",
+  "plugin_version": "0.1.27",
+  "source_commit": "13b95a16fe4ba914c57cae228e6ab6cf92776792",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "0dd5496631022268d4c736be1ede0d3c3374b9bbc00c031f4acc00adb4a842a0",
+      "sha256": "ef38dc283fb1ee47b89c391fc664b6bf68f29d7fa9caadf4770e259f21c7f4c9",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "273c53bb6ab2ec003a1766df7744270ce882984d74b2c5e7d448d749bc4d88d3",
+      "sha256": "b5e386063ae6f0c11851c616a2ec12744d85592184ad2590b71ce7cb3ab283b4",
       "size": 548
     },
     {
@@ -124,8 +124,8 @@
     },
     {
       "path": "hooks/hooks.json",
-      "sha256": "c02a2f882fd2c4a8fb5c68061bb6e6d4d474dd925c85855061ba0a00ac28b290",
-      "size": 635
+      "sha256": "0b789e65a8231cf3a90216068f86bf875562c2ea1a4bd3725789edd07bbf4e14",
+      "size": 648
     },
     {
       "path": "requirements.lock.txt",
@@ -534,8 +534,8 @@
     },
     {
       "path": "scripts/workflowprogram-foreground-guard.py",
-      "sha256": "da2393b22aa9042cb0f57f3f6d68de65aaa99c9531a87310753d181aecf12dc2",
-      "size": 25983
+      "sha256": "ed0d01aa03e551342af91d813a3185fc85928f5fc4710776c24c285d371e10a4",
+      "size": 27346
     },
     {
       "path": "skills/commit/SKILL.md",
@@ -644,8 +644,8 @@
     },
     {
       "path": "skills/workflowprogram-develop/SKILL.md",
-      "sha256": "fdf8971efc186e6c9bb53415eae6351635ebf3553b09c1da0b1bf6722f5317cf",
-      "size": 24275
+      "sha256": "1853ea68b29ac245c70bd159bda247a532d92b6456bd223a92d73abb69519940",
+      "size": 24528
     },
     {
       "path": "skills/workflowprogram-highlevel-design/agents/openai.yaml",
@@ -729,8 +729,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "b53adae4c82a5f5f52e6a4c1ea8db61ba07a008d409f957400fd8e463ca31c68",
-      "size": 17818
+      "sha256": "b304f8f7e2fb2a631a5f8690eb56fdd477c2272c5de20b05c30d61cbf9541b98",
+      "size": 18071
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",

@@ -198,6 +198,52 @@ def test_guard_allows_foreground_agent_for_non_wpn_intent(tmp_path: Path) -> Non
     assert completed.returncode == 0, completed.stdout
 
 
+def test_guard_blocks_plan_mode_exit_for_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "继续 WPN / WorkflowProgram Native 对 FreeSTRIDE 的迁移")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "ExitPlanMode",
+            "cwd": str(tmp_path),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "plan": "Call Workflow after confirmation.",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "BLOCKED"
+    assert "must not enter Claude Code plan mode" in payload["reason"]
+
+
+def test_guard_blocks_claude_plan_file_write_for_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "继续 WPN / WorkflowProgram Native 对 FreeSTRIDE 的迁移")
+    plan_file = tmp_path / ".claude" / "plans" / "workflowprogram-develop-plan.md"
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Write",
+            "cwd": str(tmp_path),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "file_path": str(plan_file),
+                "content": "Plan instead of invoking Workflow.",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "BLOCKED"
+    assert "plan-mode files" in payload["reason"]
+
+
 def test_guard_blocks_shell_write_before_wpn_state(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
@@ -643,6 +689,7 @@ def test_hook_matcher_covers_powershell_and_shell() -> None:
     matcher_text = "|".join(matchers)
     assert "PowerShell" in matcher_text
     assert "Shell" in matcher_text
+    assert "ExitPlanMode" in matcher_text
 
 
 def test_guard_blocks_commit_until_managed_apply_pass(tmp_path: Path) -> None:

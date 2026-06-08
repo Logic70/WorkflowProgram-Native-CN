@@ -165,6 +165,11 @@ It must also not edit Claude Code's transient workflow cache files under
 product JS gate. Those files are runtime cache/resume artifacts, not the source
 of truth for WPN fixes.
 
+Do not convert a confirmed WPN continuation into Claude Code plan mode. Do not
+write `.claude/plans/*.md` and do not call `ExitPlanMode`; once external
+confirmation is present, invoke the product Workflow directly and follow the
+returned `nextAction`.
+
 If the result is `READY_FOR_GENERATION`, `READY_FOR_VALIDATION`, `READY_FOR_SMOKE`,
 or `READY_FOR_APPLY`, the foreground assistant must execute only the controlled
 script named by `nextAction` and feed the resulting evidence back into the same

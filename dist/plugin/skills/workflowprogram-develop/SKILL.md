@@ -93,6 +93,11 @@ self-approve confirmation from its own readback. It must not edit `.claude/**`,
 `.workflowprogram/design/**`, `.workflowprogram/runtime/**`, or commit changes
 to the target project.
 
+Do not convert a confirmed WPN continuation into Claude Code plan mode. Do not
+write `.claude/plans/*.md` and do not call `ExitPlanMode`; once external
+confirmation is present, invoke the product Workflow directly and follow the
+returned `nextAction`.
+
 前台模型负责先推导 `request`、`targetRoot`、`runRoot`、`runId`，只有不可推导时才向用户收集；随后收集澄清答案，转述 JS 返回的问题或确认请求，并按 `nextAction` 调用窄化 adapter 后重新调用同一 JS。候选 hash 和外部报告通过 `<PLUGIN_ROOT>/scripts/build-native-develop-evidence.py` 规范化。不得由 skill 或前台模型重新实现 JS 中的阶段顺序。
 
 下面的 S1-S6 与 legacy runtime 说明仅作为已有目标的兼容参考；新建目标默认使用 Native JS 控制面。
