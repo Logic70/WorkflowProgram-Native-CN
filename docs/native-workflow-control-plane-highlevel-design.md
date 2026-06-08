@@ -430,7 +430,7 @@ M12 已完成确定性 manifest 与资格聚合层：`build-native-workflow-mani
 - [Native Workflow Smoke Fixture](../tests/manual-fixtures/native-workflow-smoke/README.md) 记录了用户自写 JS、`skill_listing`、`Workflow({ scriptPath })` 和结构化 `PASS`。
 - [OTel request JSON](D:/Code/otel-raw/0067447e-6ccd-4992-ac1e-2eefdff7b76d.request.json) 中已观察到保存 workflow 按名称调用：`Workflow({"args":"...","name":"plan-hunter"})`。
 - [Product Workflow Plugin Script-Path Smoke](../tests/manual-fixtures/native-workflow-product-registration/README.md) 记录了插件产品 JS 的 `Workflow({ scriptPath, args })` 成功调用，以及同一脚本按名称查找失败。该证据将 saved workflow 能力与插件产品分发契约明确分开。
-- [Native Develop Re-entrant Blocker Smoke](../tests/manual-fixtures/native-workflow-develop-reentrant/README.md) 记录了 M9 develop JS 在真实交互式 CLI 中执行，并以 `BLOCKED_INPUT` 拒绝缺少必要字段的调用。自动化 PTY 必须继承启用 Native Workflow 的 shell feature flags。
+- [Native Develop Re-entrant Foreground Args Smoke](../tests/manual-fixtures/native-workflow-develop-reentrant/README.md) 记录了 M9 develop JS 在真实交互式 CLI 中执行；当前缺少首轮 `args` 时应返回 `NEEDS_FOREGROUND_ARGS`，要求前台推导并重入，而不是把可推导字段转问用户。自动化 PTY 必须继承启用 Native Workflow 的 shell feature flags。
 
 上述证据证明当前交互式 CLI 的已观察行为，不等价于对所有 Claude Code 版本和入口作兼容承诺。
 

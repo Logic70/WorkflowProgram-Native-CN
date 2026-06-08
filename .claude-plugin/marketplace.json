@@ -17,7 +17,7 @@
         "ref": "main"
       },
       "description": "A Claude Code plugin that packages WorkflowProgram Native as reusable Workflow JS control-plane skills, scripts, and workflows",
-      "version": "0.1.14",
+      "version": "0.1.15",
       "author": {
         "name": "Logic_70",
         "email": "zjmp8870@outlook.com"

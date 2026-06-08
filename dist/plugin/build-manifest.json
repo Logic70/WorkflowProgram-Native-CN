@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T07:50:39Z",
+  "generated_at": "2026-06-08T08:00:52Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.14",
-  "source_commit": "af72902ae98c73cbf2f5ff68c17e11738fda2bb2",
+  "plugin_version": "0.1.15",
+  "source_commit": "5b2d0bd437dec21a582a1c634210f76ff8c9cdeb",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "7942b8d29ae8cc43179a7dd9e5dca2219b018129602ddf4c3e1ff130b5f61069",
+      "sha256": "b6a5efcc5b5502ae01b1a30e7f9cabb0d88e41a40904fe4d1386f4cc447d7299",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "9924ec21f0eee47bc819f2dd895db1fd7d36461ba3cc2c2b43b64f0c5844da65",
+      "sha256": "983a5010f024e3a7d3e3dfff0999acc853ed76457f0b962c57f1080c0ed79bb5",
       "size": 548
     },
     {
@@ -644,8 +644,8 @@
     },
     {
       "path": "skills/workflowprogram-develop/SKILL.md",
-      "sha256": "220d85b0bfb057a44978912f6f98bb496d62df8c7960997921c8a2c7a5df85c5",
-      "size": 22878
+      "sha256": "64b40a29f8cff71b529f7f7e91f9473329daed0890d2ffaee95a7400dc7fc12f",
+      "size": 22847
     },
     {
       "path": "skills/workflowprogram-highlevel-design/agents/openai.yaml",
@@ -754,8 +754,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "4fe2a2ce82a48b3f67a1559b868d869edf870806d9d71d7ebdf46b1de1881f23",
-      "size": 52485
+      "sha256": "298cde25f0f8ae18d9cedc658a58898b01bd0aa985e4148a7a445fca4d4039b0",
+      "size": 53689
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

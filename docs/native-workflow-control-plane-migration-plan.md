@@ -569,7 +569,7 @@ M11 v1 已完成：
 - 已将 `workflowprogram-validate.js` 和 `workflowprogram-audit.js` 从 M8 分发骨架升级为 M10A Native 控制面。
 - 已将 `workflowprogram-iterate.js` 从 M8 分发骨架升级为 M10B Native Lessons Loop，并新增 `build-native-iterate-evidence.py` 窄化 adapter；publish 仍保持 `NOT_IMPLEMENTED`。
 - 已将 `workflowprogram-publish.js` 从 M8 分发骨架升级为 M10C Native publish 控制面，并新增 `build-native-publish-evidence.py` target/package hash normalizer 与 GitHub run-scoped 幂等 receipt。
-- 已新增 [Native Develop Re-entrant Blocker Smoke](../tests/manual-fixtures/native-workflow-develop-reentrant/README.md)：真实交互式 CLI 通过绝对 `scriptPath` 启动 develop JS，并返回 `BLOCKED_INPUT`，证明 M9 已替换 M8 `NOT_IMPLEMENTED` 骨架。完整生命周期仍由 M11 Computer Use harness 覆盖。
+- 已新增 [Native Develop Re-entrant Foreground Args Smoke](../tests/manual-fixtures/native-workflow-develop-reentrant/README.md)：真实交互式 CLI 通过绝对 `scriptPath` 启动 develop JS；当前缺少首轮 `args` 时返回 `NEEDS_FOREGROUND_ARGS`，要求前台推导并重入，证明 M9 已替换 M8 `NOT_IMPLEMENTED` 骨架。完整生命周期仍由 M11 Computer Use harness 覆盖。
 - 已新增 `resolve-task-model-policy.py` host-side taskType 解析器，支持 `--task-type` 可重复筛选、`--available-model` 可重复（CLI 优先于 env）、`--out` 精确路径，输出 `task-model-resolution.json`。M13 已完成。
 - 已将 `workflowprogram-develop.js`、`workflowprogram-audit.js`、`workflowprogram-iterate.js` 和 `workflowprogram-native-authoring.js` 的 `model: taskModel(...)` 改为 `withTaskModel(taskType, options)` 助手，inherit/absent 时不传 model。
 - 已新增 `build-native-develop-evidence.py`，只负责 candidate tree hash 和宿主侧 evidence 规范化，不重新实现 runtime runner。

@@ -2,7 +2,6 @@
 name: workflowprogram-develop
 description: Design or update Claude Code workflow assets for the current target project
 version: 1.0.0
-disable-model-invocation: true
 ---
 
 面向 `TARGET_ROOT` 的工作流设计主入口。目标是在目标项目中设计或更新 `.claude/` 工作流资产，而不是修改插件源码仓。

@@ -431,9 +431,24 @@ const runRoot = args?.runRoot || ''
 const operation = args?.operation || 'create'
 
 if (!nonEmpty(request) || !nonEmpty(targetRoot) || !nonEmpty(runRoot) || !nonEmpty(runId)) {
-  return respond('BLOCKED_INPUT', {
-    blockingIssues: ['request, targetRoot, runRoot, and runId are required'],
-    nextAction: 'REINVOKE_WITH_ANSWERS',
+  return respond('NEEDS_FOREGROUND_ARGS', {
+    missingArgs: [
+      !nonEmpty(request) ? 'request' : '',
+      !nonEmpty(targetRoot) ? 'targetRoot' : '',
+      !nonEmpty(runRoot) ? 'runRoot' : '',
+      !nonEmpty(runId) ? 'runId' : '',
+    ].filter(nonEmpty),
+    nextAction: 'DERIVE_ARGS_AND_REINVOKE',
+    foregroundArgsPolicy: {
+      request: 'Use the original user request text after removing the skill trigger.',
+      targetRoot: 'Use the current Claude Code working directory absolute path unless the user explicitly names another target.',
+      runId: 'Create a stable new id such as develop-YYYYMMDD-HHMMSS unless reinvoking an existing run.',
+      runRoot: 'Use <targetRoot>/.workflowprogram/runs/<runId>.',
+      operation: 'Infer migrate for existing-workflow migration or refactor requests, update for updating existing Native Workflow JS, otherwise create.',
+      clarification: 'Use a nested object such as { lenses: {}, openQuestions: [], confirmedByUser: false }; migrate mode may start with empty lenses.',
+      applyApproved: 'Default false unless the user explicitly approves managed apply.',
+    },
+    userQuestionPolicy: 'Do not ask the user for request, targetRoot, runRoot, or runId when they can be derived from the current session and request text. Derive them and reinvoke this same product JS with structured nested args.',
   })
 }
 

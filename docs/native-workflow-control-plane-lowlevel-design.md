@@ -141,6 +141,8 @@ Develop 主入口的首次调用必须由 leaf Skill 前台适配层自动构造
 - `clarification`：必须是嵌套对象；migrate 可从空 lenses 开始，由产品 JS 注入迁移默认 lens。
 
 只有用户需求无法确定目标目录、目标 workflow、写入边界或真实外部决策时，才允许返回问题。
+当产品 JS 收到 scriptPath-only 或空 args 调用时，它返回 `NEEDS_FOREGROUND_ARGS`
+和 `DERIVE_ARGS_AND_REINVOKE`，要求前台按上述规则推导后重入；这不是用户澄清问题。
 
 ## 5. Authoring Stage 详细设计
 
@@ -148,7 +150,7 @@ Develop 主入口的首次调用必须由 leaf Skill 前台适配层自动构造
 
 | Stage | Purpose | Entry | Actions | Outputs | Gate | Failure | Owned Files | Evidence |
 |---|---|---|---|---|---|---|---|---|
-| D0 Intake / Route | 识别 create / update 和目标目录 | 初始 args | 读取目标目录，判定 legacy / native 状态 | normalized request | 目标目录明确 | `BLOCKED_INPUT` | 无 | route summary |
+| D0 Intake / Route | 识别 create / update 和目标目录 | 初始 args | 读取目标目录，判定 legacy / native 状态 | normalized request | 目标目录明确 | `NEEDS_FOREGROUND_ARGS` 或 `BLOCKED_INPUT` | 无 | route summary |
 | D1 Clarify | 收敛七个 logic lenses | normalized request、已有答案 | `requirement-clarification-lead` Agent 基于共享 lens 定义生成缺失问题；JS 判断是否仍需提问 | questions 或 requirement packet | lenses 完整、无开放问题、澄清 agent 输出 schema 合法 | `NEEDS_USER_INPUT` | 可选 run evidence | clarification result、lens coverage |
 | D2 Confirm | 获得用户确认 | requirement packet | 检查 `confirmedByUser` | confirmed packet | `confirmedByUser=true` | `READY_FOR_CONFIRMATION` | 可选 run evidence | confirmation result |
 | D3 Design | 生成 High-Level 和 Low-Level 设计 | confirmed packet、目标上下文 | 并行探索；串行整合 HLD、LLD、trace | design docs | 边界、输入输出、gate、测试完整 | `BLOCKED_DESIGN` | candidate design docs | design summary |
@@ -585,6 +587,7 @@ Native JS 不直接读写文件系统，也不在后台控制桌面。D5-D9 使�
 - `READY_FOR_SMOKE`
 - `READY_FOR_APPLY`
 - `PASS`
+- `NEEDS_FOREGROUND_ARGS`
 - `BLOCKED_INPUT`
 - `BLOCKED_DESIGN`
 - `BLOCKED_DESIGN_REVIEW`
@@ -841,7 +844,8 @@ sequenceDiagram
 
 | Error | 检测点 | 反馈 | 恢复 | Evidence |
 |---|---|---|---|---|
-| `BLOCKED_INPUT` | D0 / D1 | 缺失输入 | 补充 args 后重新调用 | clarification report |
+| `NEEDS_FOREGROUND_ARGS` | D0 | 前台未传首轮基础 args | 前台按 entry policy 推导 args 后重新调用，不询问用户 | foreground args policy |
+| `BLOCKED_INPUT` | D0 / D1 | 输入不可推导或非法 | 补充 args 后重新调用 | clarification report |
 | `NEEDS_USER_INPUT` | D1 | 结构化问题 | 前台转述并重新调用 | questions |
 | `READY_FOR_CONFIRMATION` | D2 | 需求摘要 | 用户确认后重新调用 | requirement packet |
 | `BLOCKED_DESIGN` | D3 | 设计边界不完整 | 补充设计后重跑 | design summary |

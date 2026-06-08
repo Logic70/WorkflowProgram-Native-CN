@@ -1954,7 +1954,10 @@ def test_existing_workflow_migration_examples_are_implementation_level() -> None
 def test_develop_native_workflow_blocks_missing_input() -> None:
     execution = execute_native_workflow(DEVELOP_WORKFLOW, {})
 
-    assert execution["result"]["status"] == "BLOCKED_INPUT"
+    assert execution["result"]["status"] == "NEEDS_FOREGROUND_ARGS"
+    assert execution["result"]["nextAction"] == "DERIVE_ARGS_AND_REINVOKE"
+    assert execution["result"]["missingArgs"] == ["request", "targetRoot", "runRoot", "runId"]
+    assert "Do not ask the user" in execution["result"]["userQuestionPolicy"]
 
 
 def test_develop_native_workflow_requests_missing_lenses() -> None:
@@ -2257,6 +2260,7 @@ def test_primary_develop_skill_derives_first_invocation_args() -> None:
     assert "`operation`: infer `migrate`" in text
     assert "Call the product JS on the first invocation with structured nested args" in text
     assert "Do not call Workflow with only `scriptPath`" in text
+    assert "disable-model-invocation" not in text
 
 
 def test_develop_migrate_exploration_prompt_treats_migration_decisions_as_settled() -> None:

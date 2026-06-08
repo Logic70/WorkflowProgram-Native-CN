@@ -2,7 +2,6 @@
 name: workflowprogram-develop
 description: Design or update Claude Code workflow assets for the current target project
 version: 1.0.0
-disable-model-invocation: true
 ---
 
 <!-- AUTO-GENERATED FROM .claude/ - DO NOT EDIT DIRECTLY -->
