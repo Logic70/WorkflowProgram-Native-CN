@@ -442,6 +442,9 @@ Design changes:
   managed paths, including Python `open(..., 'w')` / `Path.write_text`, Node
   `fs.writeFile*`, PowerShell content writers, and shell `tee`/`touch`/`mkdir`;
   read-only probes and active run-root candidate writes remain allowed.
+- Foreground guard also blocks `Agent` / `Task` tool use for transcripts whose
+  latest user request carries WPN / WorkflowProgram Native intent, forcing the
+  foreground assistant to enter through the product Workflow before exploration.
 
 Implementation tasks:
 
@@ -455,6 +458,9 @@ Implementation tasks:
   include it in repository/dist validation.
 - Add embedded-writer regression coverage for Bash/PowerShell/Shell commands
   that target `.claude/**` or `.workflowprogram/managed-files.json`.
+- Register the foreground guard for `Agent` / `Task` and add transcript-based
+  WPN intent tests that block generic exploration while leaving non-WPN Agent
+  usage untouched.
 - Generate target-runtime wrappers with a cross-platform plugin Python launcher:
   keep `bin/workflowprogram-python` on POSIX, use `sys.executable` plus
   plugin-local bootstrap and `PYTHONPATH` setup on Windows, and cover this with

@@ -220,6 +220,10 @@ the plugin `PreToolUse` hook:
   `Set-Content`/`Add-Content`/`Out-File`, or shell `tee`/`touch`/`mkdir`.
   Read-only probes such as `open(...).read()`, `read_text`, `rg`, `cat`, and
   writes under the active `runRoot` candidate tree remain allowed;
+- foreground `Agent` / `Task` tool use is blocked when the active transcript's
+  latest user request contains WPN / WorkflowProgram Native intent. This makes
+  the product Workflow invocation a hook-enforced entry boundary instead of a
+  skill-description convention;
 - controlled generation, validation, smoke, and apply remain explicit scripts
   selected by the product JS `nextAction`.
 - generated target-runtime wrappers delegate shared plugin scripts through a

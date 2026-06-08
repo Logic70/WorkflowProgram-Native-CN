@@ -98,6 +98,63 @@ def test_guard_allows_candidate_write_under_run_root(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout
 
 
+def write_transcript(path: Path, prompt: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "user",
+                    "content": prompt,
+                }
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_guard_blocks_foreground_agent_for_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "继续 WPN / WorkflowProgram Native 对 Free STRIDE 的迁移回归")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Agent",
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "subagent_type": "Explore",
+                "prompt": "Explore FreeSTRIDE project structure",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "BLOCKED"
+    assert "product Workflow" in payload["reason"]
+
+
+def test_guard_allows_foreground_agent_for_non_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "Summarize the current repository structure")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Agent",
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "subagent_type": "Explore",
+                "prompt": "Explore project structure",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
 def test_guard_blocks_python_embedded_write_to_managed_workflow(tmp_path: Path) -> None:
     target = tmp_path / "target"
     run_root = tmp_path / "run"

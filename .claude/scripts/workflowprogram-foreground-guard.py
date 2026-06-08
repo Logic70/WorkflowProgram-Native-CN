@@ -40,6 +40,21 @@ DIRECT_FILE_WRITE_TOOLS = {
     "NotebookEdit",
 }
 
+AGENT_TOOLS = {
+    "Agent",
+    "Task",
+}
+
+WPN_INTENT_PATTERNS = (
+    r"\bWPN\b",
+    r"\bWorkflowProgram\b",
+    r"WorkflowProgram\s+Native",
+    r"workflowprogram-native",
+    r"Native\s+Workflow\s+JS",
+    r"native\s+workflow",
+    r"产品\s*Workflow",
+)
+
 WRITE_COMMAND_PATTERNS = (
     r"\bgit\s+add\b",
     r"\bgit\s+commit\b",
@@ -242,6 +257,70 @@ def tool_input(payload: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def transcript_path(payload: dict[str, Any]) -> Path | None:
+    for key in ("transcript_path", "transcriptPath", "transcript"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return Path(value)
+    return None
+
+
+def content_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                if isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+                elif isinstance(item.get("content"), str):
+                    parts.append(item["content"])
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts)
+    return ""
+
+
+def latest_user_prompt_from_transcript(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item.get("lastPrompt"), str):
+            return item["lastPrompt"]
+        message = item.get("message")
+        if isinstance(message, dict) and message.get("role") == "user":
+            text = content_text(message.get("content"))
+            if text.strip():
+                return text
+    return ""
+
+
+def wpn_intent_text(payload: dict[str, Any]) -> str:
+    candidates = [
+        str(payload.get("prompt") or ""),
+        str(payload.get("lastPrompt") or ""),
+        content_text(payload.get("message")),
+    ]
+    path = transcript_path(payload)
+    if path:
+        candidates.append(latest_user_prompt_from_transcript(path))
+    return "\n".join(item for item in candidates if item)
+
+
+def has_wpn_intent(payload: dict[str, Any]) -> bool:
+    text = wpn_intent_text(payload)
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in WPN_INTENT_PATTERNS)
+
+
 def input_paths(value: Any) -> Iterable[str]:
     if isinstance(value, str):
         yield value
@@ -404,6 +483,14 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
     return allow("bash-tool")
 
 
+def check_agent_tool(payload: dict[str, Any]) -> int:
+    if not has_wpn_intent(payload):
+        return allow("agent-non-wpn")
+    return block(
+        "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground Agent exploration.",
+    )
+
+
 def unwrap_result_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     """Unwrap a ``{result: {...}}`` envelope when the inner object carries
     ``status`` and ``workflow`` keys (the workflow JS respond() shape).
@@ -442,6 +529,8 @@ def command_record(args: argparse.Namespace) -> int:
 def command_check(_: argparse.Namespace) -> int:
     payload = hook_payload()
     name = tool_name(payload)
+    if name in AGENT_TOOLS:
+        return check_agent_tool(payload)
     if name in DIRECT_FILE_WRITE_TOOLS:
         paths = list(input_paths(tool_input(payload)))
         state = None
