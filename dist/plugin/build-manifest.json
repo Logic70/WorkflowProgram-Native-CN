@@ -1,20 +1,20 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T14:38:35Z",
+  "generated_at": "2026-06-08T14:50:33Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.23",
-  "source_commit": "8496c7a06d1994cffa4fa872314e5201c870e0a0",
+  "plugin_version": "0.1.24",
+  "source_commit": "e0610b28813b42badbd26b207d4741ccf28c69f0",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "1c66e8825c09399e7be3cbb32f7fc15e2b317728be3f17d77ecb3bf112131c91",
+      "sha256": "9e84cadc4b210a748887e4e9cb30532e00e2d854b37fd30bdf4fa2e144555a19",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "9d9630e4847587111a7c56486ae789b8296be78343ee569536f93d987a96ef80",
+      "sha256": "85982e12b14fc3b3bea23bdc1808fef23b0b28a321a3865fa17fdfeb4eb4b627",
       "size": 548
     },
     {
@@ -534,8 +534,8 @@
     },
     {
       "path": "scripts/workflowprogram-foreground-guard.py",
-      "sha256": "b1e8f85a3cf41c9673e280bffbdfe268736b66025845a86f61ef404d8f5e8986",
-      "size": 24973
+      "sha256": "c0baf2cd2c0cf7afbd52b1424e9aa408765c3942a06e1bb952dbe24b6fd32572",
+      "size": 25245
     },
     {
       "path": "skills/commit/SKILL.md",

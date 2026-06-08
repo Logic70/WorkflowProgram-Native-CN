@@ -295,6 +295,35 @@ def test_guard_ignores_recent_unbound_state_without_run_reference(tmp_path: Path
     assert "must launch the product Workflow" in payload["reason"]
 
 
+def test_guard_does_not_apply_unbound_state_without_run_reference_or_intent(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = target / ".workflowprogram" / "runs" / "active"
+    run_root.mkdir(parents=True)
+    record_state(
+        target,
+        run_root,
+        {
+            "status": "BLOCKED_GENERATION",
+            "workflow": "workflowprogram-develop",
+            "nextAction": "FIX_DESIGN_AND_REINVOKE",
+        },
+    )
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "sessionId": "fresh-session",
+            "tool_input": {
+                "command": "mkdir scratch",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
 def test_guard_keeps_recent_unbound_state_active_for_run_reference(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")

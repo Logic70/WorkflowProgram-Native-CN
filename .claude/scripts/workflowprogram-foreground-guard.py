@@ -293,20 +293,25 @@ def payload_mentions_state_run(payload: dict[str, Any], state: dict[str, Any]) -
 
 
 def state_applies_to_payload(payload: dict[str, Any], state: dict[str, Any]) -> bool:
-    if not has_wpn_intent(payload):
-        return True
     payload_session_id = str(payload.get("sessionId") or "").strip()
     state_session_id = str(state.get("sessionId") or "").strip()
+    payload_transcript = transcript_path(payload)
+    payload_has_binding = bool(payload_session_id or payload_transcript)
     if payload_session_id and state_session_id:
         return payload_session_id == state_session_id
 
-    payload_transcript = transcript_path(payload)
     state_transcript = str(state.get("transcriptPath") or "").strip()
     if payload_transcript and state_transcript:
         return path_identity(payload_transcript) == path_identity(state_transcript)
 
     # Legacy states have no transcript/session binding. They apply only to
     # immediate continuation commands that explicitly reference the same run.
+    if not state_session_id and not state_transcript:
+        if not payload_has_binding:
+            return True
+        return state_is_recent(state) and payload_mentions_state_run(payload, state)
+    if not has_wpn_intent(payload):
+        return True
     return state_is_recent(state) and payload_mentions_state_run(payload, state)
 
 

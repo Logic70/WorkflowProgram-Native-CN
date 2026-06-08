@@ -229,7 +229,7 @@ the plugin `PreToolUse` hook:
   transcripts allow read-only shell probes but block foreground file edits,
   shell writes, and side-effect scripts. Creating run directories, route output
   files, candidate assets, or managed manifests is product Workflow ownership;
-- stale unbound guard states are ignored for fresh WPN transcripts. A historical
+- stale unbound guard states are ignored for fresh requests. A historical
   `.workflowprogram/session-state.json` must not hijack a new migration request
   into an old `runRoot`; transcript/session-bound states remain active, and
   unbound states only apply to recent commands that explicitly reference the same
