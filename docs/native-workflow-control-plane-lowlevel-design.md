@@ -131,6 +131,17 @@ TARGET_ROOT/
 
 project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ name, args })`。当前已观察 CLI 不会自动把插件打包目录 `workflows/*.js` 注册为 saved workflow，因此 WorkflowProgram 产品入口不得依赖按名称调用。
 
+Develop 主入口的首次调用必须由 leaf Skill 前台适配层自动构造 nested `args`，不得把可推导控制参数转成用户问题：
+
+- `request`：去掉 skill 触发词后的原始用户需求。
+- `targetRoot`：用户未显式指定时使用当前 Claude Code 工作目录的绝对路径。
+- `runId`：新运行使用稳定 ID，例如 `develop-YYYYMMDD-HHMMSS`；重入时复用已有 ID。
+- `runRoot`：`<targetRoot>/.workflowprogram/runs/<runId>`。
+- `operation`：已有 workflow 迁移或重构为 `migrate`，已有 Native JS 修改为 `update`，否则为 `create`。
+- `clarification`：必须是嵌套对象；migrate 可从空 lenses 开始，由产品 JS 注入迁移默认 lens。
+
+只有用户需求无法确定目标目录、目标 workflow、写入边界或真实外部决策时，才允许返回问题。
+
 ## 5. Authoring Stage 详细设计
 
 ### 5.1 Develop 阶段
@@ -163,10 +174,12 @@ part of `workflowprogram-develop.js`, not just operator guidance:
   evidence, acceptance, and boundary lenses are filled from WPN policy and
   existing-asset discovery rules; unresolved explicit `openQuestions` still
   trigger the Agent.
-- The native develop leaf Skill owns a canonical `Workflow({ scriptPath, args:
-  {...} })` example and an explicit anti-pattern for string args and dotted keys.
-  The foreground assistant derives run identifiers and settled migration
-  decisions; users should not hand-author control-plane args.
+- The native develop leaf Skill and primary `workflowprogram-develop` Skill own
+  canonical `Workflow({ scriptPath, args: {...} })` examples and explicit
+  anti-patterns for string args, dotted keys, and scriptPath-only invocation.
+  The foreground assistant derives run identifiers, target/run roots, operation,
+  and settled migration decisions; users should not hand-author control-plane
+  args.
 - Exploration prompts treat `migrationDecisions` as settled input. Resolved
   decisions must not be echoed into `userDecisions`, and no-op blocker text such
   as "No true blockers identified" must be represented as `trueBlockers: []`.

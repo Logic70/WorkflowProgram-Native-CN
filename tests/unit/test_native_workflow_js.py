@@ -20,6 +20,7 @@ NATIVE_WORKFLOW_REFERENCE = (
     ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "native-workflow-js.md"
 )
 NATIVE_DEVELOP_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-native-develop" / "SKILL.md"
+DEVELOP_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-develop" / "SKILL.md"
 LOWLEVEL_EXAMPLES = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "examples"
 NATIVE_WORKFLOW_LLD = ROOT / "docs" / "native-workflow-control-plane-lowlevel-design.md"
 PRODUCT_WORKFLOW_SKELETONS: dict[str, str] = {}
@@ -2240,6 +2241,22 @@ def test_native_develop_skill_documents_canonical_structured_invocation() -> Non
     assert "dotted keys can" in text
     assert "READY_FOR_CONFIRMATION" in text
     assert "workflowprogram-develop-*.js" in text
+
+
+def test_primary_develop_skill_derives_first_invocation_args() -> None:
+    """The primary user-facing skill should not ask users for derivable product
+    JS intake fields before first Workflow invocation."""
+    text = DEVELOP_SKILL.read_text(encoding="utf-8")
+
+    assert "### First Invocation Defaults" in text
+    assert "The user should not need to provide these fields manually" in text
+    assert "`request`: original user request text after removing the skill trigger" in text
+    assert "`targetRoot`: current working directory absolute path unless the user explicitly names another target" in text
+    assert "`runId`: create a stable new id such as `develop-YYYYMMDD-HHMMSS`" in text
+    assert "`runRoot`: `<targetRoot>/.workflowprogram/runs/<runId>`" in text
+    assert "`operation`: infer `migrate`" in text
+    assert "Call the product JS on the first invocation with structured nested args" in text
+    assert "Do not call Workflow with only `scriptPath`" in text
 
 
 def test_develop_migrate_exploration_prompt_treats_migration_decisions_as_settled() -> None:

@@ -28,7 +28,43 @@ Workflow({
 })
 ```
 
-前台模型负责收集 `request`、`targetRoot`、`runRoot`、`runId` 和澄清答案，转述 JS 返回的问题或确认请求，并按 `nextAction` 调用窄化 adapter 后重新调用同一 JS。候选 hash 和外部报告通过 `<PLUGIN_ROOT>/scripts/build-native-develop-evidence.py` 规范化。不得由 skill 或前台模型重新实现 JS 中的阶段顺序。
+### First Invocation Defaults
+
+The user should not need to provide these fields manually. Before the first
+`Workflow({ scriptPath, args })` call, the foreground assistant must derive a
+structured nested `args` object from context:
+
+- `request`: original user request text after removing the skill trigger.
+- `targetRoot`: current working directory absolute path unless the user explicitly names another target.
+- `runId`: create a stable new id such as `develop-YYYYMMDD-HHMMSS`, unless reinvoking an existing run.
+- `runRoot`: `<targetRoot>/.workflowprogram/runs/<runId>`.
+- `operation`: infer `migrate` for existing-workflow migration or refactor requests, `update` for updating an existing Native Workflow JS, otherwise `create`.
+- `clarification`: pass a nested object. For `migrate`, it may start empty because `workflowprogram-develop.js` seeds migration lens defaults.
+- `applyApproved`: default `false` unless the user explicitly approves managed apply.
+
+Call the product JS on the first invocation with structured nested args:
+
+```text
+Workflow({
+  scriptPath: "<PLUGIN_ROOT>/workflows/workflowprogram-develop.js",
+  args: {
+    runId: "<RUN_ID>",
+    request: "<original user request>",
+    targetRoot: "<TARGET_ROOT>",
+    runRoot: "<TARGET_ROOT>/.workflowprogram/runs/<RUN_ID>",
+    operation: "create | update | migrate",
+    clarification: { lenses: {}, openQuestions: [], confirmedByUser: false },
+    migrationDecisions: {},
+    applyApproved: false
+  }
+})
+```
+
+Do not call Workflow with only `scriptPath`, and do not ask the user for
+`request`, `targetRoot`, `runRoot`, or `runId` when those values can be derived
+from the current Claude Code session and request text.
+
+前台模型负责先推导 `request`、`targetRoot`、`runRoot`、`runId`，只有不可推导时才向用户收集；随后收集澄清答案，转述 JS 返回的问题或确认请求，并按 `nextAction` 调用窄化 adapter 后重新调用同一 JS。候选 hash 和外部报告通过 `<PLUGIN_ROOT>/scripts/build-native-develop-evidence.py` 规范化。不得由 skill 或前台模型重新实现 JS 中的阶段顺序。
 
 下面的 S1-S6 与 legacy runtime 说明仅作为已有目标的兼容参考；新建目标默认使用 Native JS 控制面。
 

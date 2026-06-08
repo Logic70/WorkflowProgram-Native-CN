@@ -81,6 +81,7 @@ flowchart LR
 
 - 模型负责理解用户自然语言、转述澄清问题和发起 Workflow 工具调用。
 - Plugin Skill listing 负责让模型发现 WorkflowProgram 产品入口；Skill 解析插件根目录并提供绝对 `scriptPath`。
+- Leaf Skill 在首轮调用前推导产品 JS 基础 `args`：`request` 来自用户原始需求，`targetRoot` 默认当前工作目录，`runId` 是稳定新运行 ID，`runRoot=<targetRoot>/.workflowprogram/runs/<runId>`，`operation` 由 create/update/migrate 语义推断。用户不需要手工提供这些控制参数。
 - saved workflow registry 仍可发现 project/user 保存的 workflow，并允许按名称调用，但它不是插件产品 JS 的分发契约。
 - WorkflowProgram Native JS 负责控制决策、阶段顺序、并行、gate 和返回状态。
 - Agent 负责需要模型推理的工作；确定性脚本负责代码审计、文件检查、测试、drift 和外部事实。
@@ -189,7 +190,7 @@ FreeSTRIDE 迁移暴露的同类问题统一按机制收口，而不是对单个
 - Static Validator 必须做 ESM module parse。正则结构检查只负责 WorkflowProgram 规则，不能替代 Native runtime 可加载性检查；动态代码执行不得用于隐藏宿主工具引用。
 - `READY_FOR_SMOKE` 只在 static validation 和 module parse 都 PASS 后出现；否则停在 `BLOCKED_VALIDATION`。
 - `operation=migrate` 在 D1 Clarify 前补齐迁移默认 lens：成功信号是生成候选 Native JS 并具备 static validation / smoke evidence；subprocess 合约从现有 `.claude/` 与脚本资产在 Design / Explore 中发现；旧 `.workflowprogram/runtime` 默认 retained/deferred 为非活动资产，除非用户明确要求处置。
-- Leaf Skill 必须给出 `scriptPath + structured args object` 的 canonical invocation 正例，并明确禁止以字符串 args 或 dotted key 作为主路径。`migrationDecisions` 是已决输入，不得在 Explore 阶段重新作为 `userDecisions` 阻塞。
+- Leaf Skill 必须给出 `scriptPath + structured args object` 的 canonical invocation 正例，并明确禁止以字符串 args、dotted key 或只有 `scriptPath` 的调用作为主路径。主入口必须自动推导 `request/targetRoot/runRoot/runId/operation`，只有无法从当前会话和用户需求得出时才向用户提问。`migrationDecisions` 是已决输入，不得在 Explore 阶段重新作为 `userDecisions` 阻塞。
 - Explore 阶段的 `userDecisions` 只表示外部用户必须决定且无法由现有需求、真源资产、迁移默认策略或 Design 阶段自行解决的问题。phase mapping、gate mapping、中间 schema、Python/Bash tool 调用策略、managed-files 计数和 smoke fixture 选择都属于 Design work item，不得作为用户阻塞。
 - `removeDotAgentsDir` 只指目标根目录的 `.agents/`、`.agentos/` 等临时重复目录，不指 `.claude/agents/`。除非显式 `removeClaudeAgentsDir=true`，`.claude/agents/` 与 `.claude/skills/` 是正式注册资产，必须默认 retain/reuse 或按单文件处置。
 - Design Agent 输出必须限幅：大工作流返回 phase contracts、生成约束和 traceability 引用，不复制完整源文件、完整 Agent/Skill prompt 或超大 JS body，避免后台 Workflow 因超长 HLD/LLD 无法返回结构化结果。
