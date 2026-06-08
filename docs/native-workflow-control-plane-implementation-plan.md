@@ -93,7 +93,7 @@ P1-P7 已完成 Native 原型切片，不替换旧 Python runtime 主链。P8 �
 - 五个文件只返回统一 `NOT_IMPLEMENTED` envelope、`plugin-script-path` 启动模式、后续迁移里程碑和 legacy delegation 提示，不包含真实 Agent 调度或业务控制流。
 - source、`dist/plugin/` 和 build manifest 均包含五个入口。
 - 真实 Claude Code CLI 可通过插件绝对路径执行 `Workflow({ scriptPath, args })`。
-- 同一 CLI 中 `Workflow({ name, args })` 查找产品名称失败，证明插件产品入口不得依赖 saved workflow registry 自动注册。
+- 历史 CLI 中 `Workflow({ name, args })` 查找产品名称失败；2026-06-08 Claude Code 2.1.161 又观察到插件 `workflows/*.js` 可按 `meta.name` 暴露成 synthetic workflow/skill。结论收敛为：产品入口不得依赖公开名称调用，产品 JS `meta.name` 必须内部化，公开入口由 Skill 解析绝对 `scriptPath`。
 
 ### P9. 已完成早期 blocker smoke、待 P11 完整交互式覆盖：Develop 可重入控制面
 
@@ -329,7 +329,7 @@ P13 已完成按任务类型选择模型的核心实现（见上文实施结果�
 | Round 10 | M8 注册骨架与 M9-M10C 业务迁移边界不够严格；M10 内部优先级未拆分；Native Lessons Loop 缺少完整阶段 | 将 M8 限定为 `NOT_IMPLEMENTED` 注册契约；拆分 M10A / M10B / M10C；补齐 findings、lessons delta、constraints approval |
 | Round 11 | release 级仓库校验只检查文件存在；P13 / P14 与 M13 / M14 顺序不一致；HLD / LLD 未登记过渡态 `NOT_IMPLEMENTED` | 仓库 validator 主动执行 Native JS 静态校验；对齐编号；登记仅供 M8 使用的过渡状态 |
 | Round 12 | 新鲜复核无新增 actionable issue；单元测试、integration gate、仓库校验、链接和空白检查通过 | 当时关闭 M8 自动化实现，并保留真实 CLI listing / name-launch 手工 smoke；该假设随后被 Round 13 的真实证据修正 |
-| Round 13 | 真实 CLI 证明插件产品 JS 可按绝对 `scriptPath` 启动，但不会自动进入 saved workflow registry | 将 M8 改为插件产品 JS 分发与路径启动契约；Skill 负责语义发现和绝对路径解析 |
+| Round 13 | 真实 CLI 证明插件产品 JS 可按绝对 `scriptPath` 启动；后续 2026-06-08 回归证明 saved workflow 暴露行为随 Claude Code 版本变化 | 将 M8 改为插件产品 JS 分发与路径启动契约；Skill 负责语义发现和绝对路径解析；产品 JS `meta.name` 使用内部名避免遮蔽公开 skill |
 | Round 14 | 插件产品嵌套调用仍可能误用按名称 lookup；Computer Use smoke 口径仍引用 name launch | 要求嵌套产品 workflow 使用传入或解析后的绝对脚本引用；将 smoke 口径改为 Skill listing 与 `scriptPath` launch |
 | Round 15 | fixture 容易被理解为真实 CLI 回包已包含后加的 `launchMode` 字段 | 明确区分真实 smoke 证明的路径启动能力与静态测试保证的新 envelope |
 | Round 16 | 新鲜复核无新增 actionable issue | 关闭 M8 路径启动边界修订 |

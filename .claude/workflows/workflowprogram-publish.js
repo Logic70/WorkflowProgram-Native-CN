@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'workflowprogram-publish',
+  name: 'workflowprogram-product-publish',
   description: 'Package a verified target workflow as a marketplace-ready plugin and optionally deliver it.',
   phases: [
     { title: 'Qualify', detail: 'Require or consume deterministic qualification evidence.' },

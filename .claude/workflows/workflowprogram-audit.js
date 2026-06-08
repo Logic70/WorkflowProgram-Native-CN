@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'workflowprogram-audit',
+  name: 'workflowprogram-product-audit',
   description: 'Plugin-packaged Native Workflow JS entry for WorkflowProgram audit migration.',
   phases: [
     { title: 'Discover', detail: 'Validate required inputs and asset references.' },

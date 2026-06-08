@@ -32,7 +32,7 @@ version: 1.1.0
 
 - `.claude/workflows/<name>.js` 是目标工作流执行真源。
 - 默认只生成一个 Native Workflow JS；Skill、Agent、脚本、`.workflowprogram/design/` 和可选 `workflow-spec.yaml` 必须由需求证明后显式声明。
-- 所有产品 JS 通过绝对 `scriptPath` 启动。不要假设插件内 `workflows/*.js` 已注册为 saved workflow。
+- 所有产品 JS 通过绝对 `scriptPath` 启动。不同 Claude Code 版本可能会把插件内 `workflows/*.js` 按内部 `meta.name` 暴露为 workflow；不要用公开入口名或 `Workflow({ name, args })` 作为产品主路径。
 - 所有目标文件先写入 `RUN_ROOT/outputs/candidate/`；只有用户批准后才能通过 `managed-assets.py apply-staged` 写入 `TARGET_ROOT`。
 - 生成、校验、smoke、apply 都必须绑定同一个 `candidateHash`。不得把旧证据复用于新候选。
 - 交互式 smoke 未实际执行时，不得伪造 `PASS`。

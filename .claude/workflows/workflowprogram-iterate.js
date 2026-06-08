@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'workflowprogram-iterate',
+  name: 'workflowprogram-product-iterate',
   description: 'Plugin-packaged Native Workflow JS entry for WorkflowProgram iterate migration.',
   phases: [
     { title: 'Readback', detail: 'Validate inputs and request or consume deterministic readback evidence.' },

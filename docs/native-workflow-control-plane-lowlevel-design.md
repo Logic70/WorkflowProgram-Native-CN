@@ -129,7 +129,7 @@ TARGET_ROOT/
 
 `workflowprogram-orchestrate` Skill 可以帮助模型从自然语言选择入口。各 leaf Skill 在对应业务迁移阶段切换为 Native 启动适配器：把插件根目录解析成绝对 `scriptPath` 并调用 Workflow，但不承载执行顺序。普通用户不需要输入 slash command。
 
-project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ name, args })`。当前已观察 CLI 不会自动把插件打包目录 `workflows/*.js` 注册为 saved workflow，因此 WorkflowProgram 产品入口不得依赖按名称调用。
+project/user saved workflow 仍可在 runtime 可发现时使用 `Workflow({ name, args })`。当前已观察 Claude Code 版本可能把插件打包目录 `workflows/*.js` 按 `meta.name` 暴露成 synthetic workflow/skill；因此 WorkflowProgram 产品入口不得依赖公开名称调用，并且产品 JS 的 `meta.name` 必须使用 `workflowprogram-product-*` 内部名，避免遮蔽同名用户入口 Skill。
 
 Develop 主入口的首次调用必须由 leaf Skill 前台适配层自动构造 nested `args`，不得把可推导控制参数转成用户问题：
 
@@ -948,7 +948,7 @@ M12 已实现：
 | clarification agent attribution | integration | D1 调用和 JSONL 子代理记录 | 使用 `workflowprogram-native-cn:requirement-clarification-lead` 注册 agent；不得只在 prompt 中写“你是 ...” | JSONL `attributionAgent`、lens coverage |
 | Plugin Skill discovery | smoke | 已安装 WorkflowProgram 插件 | `skill_listing` 出现入口 Skill | JSONL、transcript |
 | plugin product scriptPath invocation | smoke | 已安装 WorkflowProgram 插件 | `Workflow({ scriptPath, args })` 启动产品 JS | run ID |
-| plugin product name lookup boundary | smoke | 已安装 WorkflowProgram 插件 | `Workflow({ name, args })` 不作为产品入口前提 | JSONL、transcript |
+| plugin product public-name shadowing boundary | smoke | 已安装 WorkflowProgram 插件 | 产品 `meta.name` 使用 `workflowprogram-product-*`，公开入口名保留给 foreground adapter skill；产品主路径仍为 `Workflow({ scriptPath, args })` | JSONL、transcript |
 | saved workflow name invocation | compatibility smoke | project/user saved workflow | runtime 可发现时 `Workflow({ name, args })` 启动 | run ID |
 | scriptPath invocation | manual smoke | 用户自写 fixture | 开发场景可启动 | fixture evidence |
 | Interactive smoke harness | smoke | 真实 CLI | 手工 packet + JSONL evaluator 验证 Skill 发现、`scriptPath` launch、Agent、schema、PASS、early blocker 路径 | transcript、journal |
@@ -964,7 +964,7 @@ M12 已实现：
 | WorkflowProgram 自身 Native 化 | `workflows/workflowprogram-*.js` | pure-literal `meta` | static validation、interactive smoke |
 | 可重入澄清 | `workflowprogram-develop.js` | result envelope | clarification integration |
 | 澄清语义归属 | `requirement-clarification-lead` Agent、`logic-lenses.md`、`clarification_utils.py` | lens definition map、agent schema、validator checks | attribution fixture、lens drift check |
-| 插件产品路径启动与 saved workflow 名称调用分离 | Plugin Skill、saved workflow registry、Workflow tool | 产品 `{ scriptPath, args }` / saved workflow `{ name, args }` | discovery、launch、negative lookup smoke |
+| 插件产品路径启动与 saved workflow 名称调用分离 | Plugin Skill、saved workflow registry、Workflow tool | 产品 `{ scriptPath, args }` / saved workflow `{ name, args }` | discovery、launch、public-name shadowing smoke |
 | JS 执行真源 | target `.claude/workflows/*.js` | script contract | artifact scope check |
 | 三层验证 | JS、schema、scripts | L1 / L2 / L3 | fixture、external-fact smoke |
 | 发布资格 | qualification scripts | publish manifest | publish qualification integration |

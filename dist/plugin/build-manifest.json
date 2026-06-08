@@ -1,26 +1,26 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T15:04:10Z",
+  "generated_at": "2026-06-08T15:18:41Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
-  "plugin_version": "0.1.25",
-  "source_commit": "224f6c6c02ea2ef5bcb84b674396b2d002b23297",
+  "plugin_version": "0.1.26",
+  "source_commit": "57f0d5135ce550b2d2a03884e3bcc813429b64be",
   "source_dirty": true,
   "files": [
     {
       "path": ".claude-plugin/marketplace.json",
-      "sha256": "9816bf49c39785ab3c68b64b70f40924109edc601e6d9ece288f4b45f37194f0",
+      "sha256": "0dd5496631022268d4c736be1ede0d3c3374b9bbc00c031f4acc00adb4a842a0",
       "size": 1214
     },
     {
       "path": ".claude-plugin/plugin.json",
-      "sha256": "bdb92f2829b8dbda359dda455c704171abaa6749b272873c09167225f8b76f8a",
+      "sha256": "273c53bb6ab2ec003a1766df7744270ce882984d74b2c5e7d448d749bc4d88d3",
       "size": 548
     },
     {
       "path": ".claude-plugin/README.md",
-      "sha256": "7ca251806c182609bd70ce9aa80513d5ffdd2554ac3f6ef01b39c076efeb9d6d",
-      "size": 12169
+      "sha256": "fbd34b4d6230f5fd9976ec118e21984cd3535ee02db0ca992433d6eef07e06b0",
+      "size": 12357
     },
     {
       "path": "agents/logic-reviewer.md",
@@ -644,8 +644,8 @@
     },
     {
       "path": "skills/workflowprogram-develop/SKILL.md",
-      "sha256": "64b40a29f8cff71b529f7f7e91f9473329daed0890d2ffaee95a7400dc7fc12f",
-      "size": 22847
+      "sha256": "fdf8971efc186e6c9bb53415eae6351635ebf3553b09c1da0b1bf6722f5317cf",
+      "size": 24275
     },
     {
       "path": "skills/workflowprogram-highlevel-design/agents/openai.yaml",
@@ -729,8 +729,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "cdd1fbacf6ef0e510a558dd2831a1c1a6c95b2d822e7310a7b3650a79edb3e1a",
-      "size": 17701
+      "sha256": "b53adae4c82a5f5f52e6a4c1ea8db61ba07a008d409f957400fd8e463ca31c68",
+      "size": 17818
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -749,18 +749,18 @@
     },
     {
       "path": "workflows/workflowprogram-audit.js",
-      "sha256": "dee440a5e7e426f8b6f3d0f99a59261b92f2e01298b83108737436ff27a61c48",
-      "size": 7682
+      "sha256": "c335863ff4966ac5fe30eb5231164335ad0b6b995a5ee9f8e96d8d48e66ad95b",
+      "size": 7690
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "b34538c219d4ec222d5f531d522f5d4e3bc773d111bf717fcdb0497eef6331a5",
-      "size": 56520
+      "sha256": "620c67f63b89acbe02088516e47c3897c4ead8778c9f5933ad1e1a6a5bf4f1dd",
+      "size": 56528
     },
     {
       "path": "workflows/workflowprogram-iterate.js",
-      "sha256": "3c7b52bac989ce703e85ac800e25ab921c6425cfd35e2bf0e048dab87388f808",
-      "size": 20192
+      "sha256": "db26f4b7ec19461491c2dc013b2b33d6bce462510e23cb2e9f91b845d28a8bee",
+      "size": 20200
     },
     {
       "path": "workflows/workflowprogram-native-authoring.js",
@@ -769,13 +769,13 @@
     },
     {
       "path": "workflows/workflowprogram-publish.js",
-      "sha256": "aed28dcf26bfcc7e0fc4dd05f9895e747ed1f29922dee5252d6823d0449a635a",
-      "size": 7734
+      "sha256": "cbb02da9e22ebaf4025af198458cf316c77e2f2bf485fde7152db7b2fa7f7fc3",
+      "size": 7742
     },
     {
       "path": "workflows/workflowprogram-validate.js",
-      "sha256": "f71f7a1dfe297ba97b1e93e53e8dcbc19d51cd70a73f6fdc9b70b96c35328483",
-      "size": 2906
+      "sha256": "9d25f18f9817a4cf71476f4fb399ecc318b20bca72ceec4b6644c800c2fbcd98",
+      "size": 2914
     }
   ]
 }

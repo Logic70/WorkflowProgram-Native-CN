@@ -53,23 +53,30 @@ Expected result:
 }
 ```
 
-## Negative Name Lookup Check
+## Public-Name Shadowing Boundary
 
-Plugin-packaged `workflows/*.js` are not assumed to become saved workflows automatically. Verify the deployment boundary explicitly:
+Plugin-packaged `workflows/*.js` may or may not be exposed as name-launchable
+workflows depending on Claude Code version. The supported deployment boundary is
+therefore not "name lookup always fails"; it is "public entry names are reserved
+for foreground adapter skills." Product JS files must use internal `meta.name`
+values such as `workflowprogram-product-develop`, and the product entry must
+still use absolute `scriptPath`.
 
 ```text
-ultrawork 不要调用 Skill，不要使用 scriptPath。直接调用 Workflow 工具：
+ultrawork 不要调用 Skill。直接调用 Workflow 工具：
 Workflow({
-  name: "workflowprogram-develop",
+  name: "workflowprogram-product-develop",
   args: {}
 })
 返回原始工具结果。
 ```
 
-Expected result in the verified Claude Code CLI version:
+Expected boundary:
 
 ```text
-Workflow "workflowprogram-develop" not found.
+Workflow({ name: "workflowprogram-develop", args }) is not a product entry path.
+The public name should resolve to the foreground adapter skill, which derives
+structured args and invokes Workflow({ scriptPath, args }).
 ```
 
 Saved project or user workflows can still use `Workflow({ name, args })` when they are discoverable by the runtime. That is a separate capability from plugin product workflow distribution.
@@ -87,6 +94,15 @@ Evidence:
 - JSONL line 28 reports that `workflowprogram-develop` was not found and lists only built-in saved workflows.
 
 The observed CLI run predates the explicit `launchMode` field added after this boundary was verified. The run proves plugin `scriptPath` launch support. Static tests and the rebuilt plugin payload enforce the updated `plugin-script-path` envelope.
+
+## Observed Result On 2026-06-08
+
+Claude Code 2.1.161 exposed plugin `workflows/*.js` as synthetic workflow/skill
+entries by `meta.name`. A FreeSTRIDE regression showed that using
+`meta.name: "workflowprogram-develop"` caused the synthetic workflow prompt to
+shadow the intended foreground adapter skill and encouraged
+`Workflow({ name, args: "<string>" })`. The product workflow `meta.name` values
+were moved to the `workflowprogram-product-*` namespace after that regression.
 
 Windows-accessible JSONL path:
 

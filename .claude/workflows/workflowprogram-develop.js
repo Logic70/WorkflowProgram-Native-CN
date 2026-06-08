@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'workflowprogram-develop',
+  name: 'workflowprogram-product-develop',
   description: 'Design or update a target Native Workflow JS control plane through re-entrant evidence handoffs.',
   phases: [
     { title: 'Intake', detail: 'Validate the request, target, run root, and operation.' },

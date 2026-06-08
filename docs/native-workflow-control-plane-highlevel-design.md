@@ -44,7 +44,7 @@
 | WorkflowProgram 自身是否也迁移为 Native Workflow JS | 是 | 迁移控制面意味着 WorkflowProgram 自身各阶段也由 JS 编排，不只是生成目标 JS |
 | 多轮澄清是否必须永远留在前台独立逻辑 | 否 | JS 阶段返回 `NEEDS_USER_INPUT` 和问题；前台模型转述后携带答案重新调用，实现可重入澄清 |
 | 用户输入、Skill listing、脚本路径是否属于同一接口 | 否 | 用户交互面、Plugin Skill 发现与启动面、Workflow 工具调用面必须分离 |
-| 插件内 `workflows/*.js` 是否自动进入 saved workflow registry | 否 | 已观察 CLI 中只能通过绝对 `scriptPath` 启动；`Workflow({ name, args })` 查找失败 |
+| 插件内 `workflows/*.js` 是否自动进入 saved workflow registry | 版本相关，必须防冲突 | 2026-06-08 在 Claude Code 2.1.161 中观察到插件 workflow 会按 `meta.name` 生成 synthetic workflow/skill。产品 JS 使用 `workflowprogram-product-*` 内部 `meta.name`，公开入口仍由 Skill 解析绝对 `scriptPath` 启动 |
 | Skill 是否是默认入口 | 对插件产品入口是 | Skill 负责语义发现和绝对路径启动；复杂控制顺序仍由 JS 或嵌套 workflow 表达 |
 | `workflow-spec.yaml` 是否继续默认生成 | 否 | Native JS 是执行真源；设计文档是审视依据；机器可读 IR 只在确有审计需求时按需增加 |
 | 原生 resume 是否足以保证业务副作用安全 | 否 | 原生恢复不自动保证文件写入、发布、外部调用幂等；副作用阶段必须增加窄化保护 |
@@ -126,7 +126,7 @@ flowchart LR
 | Plugin Skill 发现与启动面 | Claude Code、插件与模型 | `skill_listing`、leaf Skill、解析后的 `${CLAUDE_PLUGIN_ROOT}` | 选择产品能力并生成绝对插件脚本路径 |
 | Workflow 工具面 | 模型与 Native runtime | 插件产品使用 `Workflow({ scriptPath, args })`；saved workflow 可使用 `Workflow({ name, args })` | 启动脚本并传入结构化参数 |
 
-在已观察会话中，插件 Skill 会进入 `skill_listing`，插件产品 JS 可以通过绝对 `scriptPath` 调用；同一会话中按 `workflowprogram-develop` 名称查找失败。project/user saved workflow 的按名称能力仍然存在，但属于独立部署模型。用户不需要知道脚本路径，路径解析由 Skill 启动适配层负责。
+在历史会话中，插件产品 JS 已证明可以通过绝对 `scriptPath` 调用；在 2026-06-08 的 Claude Code 2.1.161 回归中，插件 `workflows/*.js` 也会按 `meta.name` 生成 synthetic workflow/skill。project/user saved workflow 的按名称能力仍然存在，但属于独立部署模型；WorkflowProgram 产品 JS 不使用公开入口名作为 `meta.name`，用户入口由 Skill 启动适配层负责解析路径。
 
 ### 5.2 WorkflowProgram 稳态工作流
 
@@ -429,7 +429,7 @@ M12 已完成确定性 manifest 与资格聚合层：`build-native-workflow-mani
 
 - [Native Workflow Smoke Fixture](../tests/manual-fixtures/native-workflow-smoke/README.md) 记录了用户自写 JS、`skill_listing`、`Workflow({ scriptPath })` 和结构化 `PASS`。
 - [OTel request JSON](D:/Code/otel-raw/0067447e-6ccd-4992-ac1e-2eefdff7b76d.request.json) 中已观察到保存 workflow 按名称调用：`Workflow({"args":"...","name":"plan-hunter"})`。
-- [Product Workflow Plugin Script-Path Smoke](../tests/manual-fixtures/native-workflow-product-registration/README.md) 记录了插件产品 JS 的 `Workflow({ scriptPath, args })` 成功调用，以及同一脚本按名称查找失败。该证据将 saved workflow 能力与插件产品分发契约明确分开。
+- [Product Workflow Plugin Script-Path Smoke](../tests/manual-fixtures/native-workflow-product-registration/README.md) 记录了插件产品 JS 的 `Workflow({ scriptPath, args })` 成功调用、早期按名称查找失败的历史证据，以及 2026-06-08 后续版本可能按 `meta.name` 暴露 synthetic workflow/skill 的边界。当前契约是产品 `meta.name` 内部化，公开入口由 Skill 解析绝对 `scriptPath`。
 - [Native Develop Re-entrant Foreground Args Smoke](../tests/manual-fixtures/native-workflow-develop-reentrant/README.md) 记录了 M9 develop JS 在真实交互式 CLI 中执行；当前缺少首轮 `args` 时应返回 `NEEDS_FOREGROUND_ARGS`，要求前台推导并重入，而不是把可推导字段转问用户。自动化 PTY 必须继承启用 Native Workflow 的 shell feature flags。
 
 上述证据证明当前交互式 CLI 的已观察行为，不等价于对所有 Claude Code 版本和入口作兼容承诺。

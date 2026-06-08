@@ -140,7 +140,7 @@ M7 是验证方向的过渡切片，不是最终稳态。它仍把澄清、JSON 
 目标：
 
 - 新增 `workflowprogram-develop.js`、`workflowprogram-audit.js`、`workflowprogram-iterate.js`、`workflowprogram-validate.js` 和 `workflowprogram-publish.js`。
-- 使用 pure-literal `meta` 保持脚本合法，但插件产品入口不依赖 saved workflow registry 自动注册。
+- 使用 pure-literal `meta` 保持脚本合法；产品 `meta.name` 使用 `workflowprogram-product-*` 内部命名，避免遮蔽公开入口 Skill。
 - Skill 解析插件绝对路径后，正式调用使用 `Workflow({ scriptPath, args })`。
 - 每个入口只返回统一的 `NOT_IMPLEMENTED` envelope、`plugin-script-path` 启动模式、后续迁移里程碑和 legacy delegation 提示；M8 不迁移真实业务控制流。
 - 将用户交互与授权面、Plugin Skill 发现与启动面、Workflow 工具面明确分离。
@@ -151,12 +151,12 @@ M7 是验证方向的过渡切片，不是最终稳态。它仍把澄清、JSON 
 - 五个产品 workflow JS 通过静态校验。
 - 源码、`dist/plugin/` 和 build manifest 均包含五个入口。
 - 真实 Claude Code CLI 能通过绝对 `scriptPath` 启动插件内产品骨架。
-- 同一 CLI 中按产品名称查找失败被记录为部署边界；插件产品入口不得依赖 `Workflow({ name, args })`。
+- 插件产品入口的部署边界是公开入口名不得被产品 JS 遮蔽；正式调用仍使用 `Workflow({ scriptPath, args })`。
 
 当前状态：
 
 - 自动化部分已完成：五个分发骨架、静态校验、单元测试、dist 构建和仓库校验均通过。
-- 环境相关部分已完成：真实 CLI 中 `scriptPath` 启动返回结构化 `NOT_IMPLEMENTED`；按名称查找失败，验证了插件分发边界。
+- 环境相关部分已完成：真实 CLI 中 `scriptPath` 启动返回结构化 `NOT_IMPLEMENTED`；早期 CLI 中公开名称查找失败，2026-06-08 回归又观察到 Claude Code 2.1.161 会按产品 `meta.name` 暴露 synthetic workflow/skill，因此产品 `meta.name` 已改为内部 `workflowprogram-product-*` 命名。
 - 未迁移能力继续由已有 Skill / legacy 路径承载；分发骨架不会静默伪装为已实现。
 
 ### M9. 已完成早期 blocker smoke、待 M11 完整交互式覆盖：可重入 Develop 控制面
@@ -488,7 +488,7 @@ M11 v1 已完成：
 | readiness fixture suite | M7 | 验证未确认需求无法进入生成 |
 | Native authoring meta-workflow static validation | M7 | 验证插件自身 JS 元工作流结构 |
 | plugin product workflow scriptPath launch | M8 | 验证五个产品 JS 被插件分发，并可通过绝对 `scriptPath` 启动 |
-| plugin product workflow negative name lookup | M8 | 记录插件产品 JS 不自动进入 saved workflow registry 的当前边界 |
+| plugin product public-name shadowing boundary | M8/M11 | 记录插件产品 JS 可能按 `meta.name` 暴露；公开入口名必须保留给 foreground adapter skill |
 | re-entrant clarification fixture | M9 | 验证澄清和确认均由 JS 状态返回控制 |
 | clarification semantic ownership fixture | M19 | 验证 D1 使用注册澄清 agent，lens 定义无漂移，prompt-only role emulation 被拒绝 |
 | candidate-bound develop evidence | M9 | 验证 generation、validation、smoke 和 apply evidence 绑定同一 candidate hash |
@@ -575,7 +575,7 @@ M11 v1 已完成：
 - 已新增 `build-native-develop-evidence.py`，只负责 candidate tree hash 和宿主侧 evidence 规范化，不重新实现 runtime runner。
 - 样例的实际交互式执行仍需在启用了 Native Workflow 的 Claude Code 会话中手工 smoke；非交互上下文不能替代该验收。
 - M7 证明交互式 Native authoring 的最小方向可行；M9-M10C 已迁移五个 WorkflowProgram 产品控制面。完整真实交互 smoke 和 legacy 下线评估仍属于后续阶段。
-- M8 已完成：真实 CLI 通过绝对 `scriptPath` 成功启动插件产品骨架；同一会话中的 name lookup 失败证明插件目录不会自动注册为 saved workflow。
+- M8 已完成：真实 CLI 通过绝对 `scriptPath` 成功启动插件产品骨架；早期同一会话中的 name lookup 失败只证明当时版本边界。2026-06-08 已观察到后续 Claude Code 版本可能按 `meta.name` 暴露插件 workflow，因此当前契约改为 `workflowprogram-product-*` 内部产品名 + foreground Skill 公开入口。
 - M11 v1（packet + evaluate）、M12 副作用幂等和 M13 按任务类型选择模型已完成；M16 新增 product smoke evidence 聚合器，只接受 evaluator 报告并在覆盖不完整时保持 `declaredComplete=false`。完整 Computer Use 终端驱动仍等待允许的非终端集成；legacy 实际删除仍等待 product smoke 关闭。
 
 ## 10. FreeSTRIDE 迁移反馈后的门禁

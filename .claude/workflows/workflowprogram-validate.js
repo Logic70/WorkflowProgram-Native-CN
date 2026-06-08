@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'workflowprogram-validate',
+  name: 'workflowprogram-product-validate',
   description: 'Plugin-packaged Native Workflow JS entry for WorkflowProgram validate migration.',
   phases: [
     { title: 'Discover', detail: 'Validate required inputs before requesting host-side inventory evidence.' },

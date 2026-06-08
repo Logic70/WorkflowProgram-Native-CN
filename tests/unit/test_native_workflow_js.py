@@ -23,11 +23,19 @@ NATIVE_DEVELOP_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-native-dev
 DEVELOP_SKILL = ROOT / ".claude" / "skills" / "workflowprogram-develop" / "SKILL.md"
 LOWLEVEL_EXAMPLES = ROOT / ".claude" / "skills" / "workflowprogram-lowlevel-design" / "references" / "examples"
 NATIVE_WORKFLOW_LLD = ROOT / "docs" / "native-workflow-control-plane-lowlevel-design.md"
+SETTINGS = ROOT / ".claude" / "settings.json"
 PRODUCT_WORKFLOW_SKELETONS: dict[str, str] = {}
 VALIDATE_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-validate.js"
 ITERATE_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-iterate.js"
 AUDIT_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-audit.js"
 PUBLISH_WORKFLOW = ROOT / ".claude" / "workflows" / "workflowprogram-publish.js"
+PRODUCT_WORKFLOWS = [
+    DEVELOP_WORKFLOW,
+    AUDIT_WORKFLOW,
+    ITERATE_WORKFLOW,
+    VALIDATE_WORKFLOW,
+    PUBLISH_WORKFLOW,
+]
 DEVELOP_LENSES = {
     "purpose": "Create a workflow.",
     "objectModel": "Read a request and generate a Native Workflow JS candidate.",
@@ -37,6 +45,13 @@ DEVELOP_LENSES = {
     "acceptanceModel": "Cover positive, blocked, and candidate-only delivery scenarios.",
     "boundaryModel": "Do not write the target project without apply approval.",
 }
+
+
+def product_meta_name(source: str) -> str:
+    marker = "name: '"
+    start = source.index(marker) + len(marker)
+    end = source.index("'", start)
+    return source[start:end]
 
 
 def run_script(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -54,6 +69,40 @@ def load_json(completed: subprocess.CompletedProcess[str]) -> dict:
         return json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
         raise AssertionError(f"invalid JSON\nstdout={completed.stdout}\nstderr={completed.stderr}") from exc
+
+
+def test_product_workflow_meta_names_do_not_shadow_public_entry_skills() -> None:
+    """Claude Code may expose plugin workflows as synthetic skills by meta name.
+
+    Product JS names must stay internal so natural-language requests for
+    workflowprogram-develop/audit/iterate/validate/publish load the foreground
+    adapter skills instead of name-launching the product workflow with string
+    args.
+    """
+    public_entry_names = {
+        "workflowprogram-develop",
+        "workflowprogram-audit",
+        "workflowprogram-iterate",
+        "workflowprogram-validate",
+        "workflowprogram-publish",
+    }
+
+    for workflow in PRODUCT_WORKFLOWS:
+        source = workflow.read_text(encoding="utf-8")
+        name = product_meta_name(source)
+        assert name.startswith("workflowprogram-product-")
+        assert name not in public_entry_names
+
+
+def test_workflow_meta_names_do_not_match_registered_skill_names() -> None:
+    """Synthetic workflow exposure must not collide with registered skills."""
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    skill_names = set(settings["skills"])
+
+    for workflow in sorted((ROOT / ".claude" / "workflows").glob("*.js")):
+        source = workflow.read_text(encoding="utf-8")
+        name = product_meta_name(source)
+        assert name not in skill_names, f"{workflow.name} meta.name shadows registered skill {name}"
 
 
 def execute_native_workflow(
@@ -2266,6 +2315,11 @@ def test_primary_develop_skill_derives_first_invocation_args() -> None:
     assert "`operation`: infer `migrate`" in text
     assert "Call the product JS on the first invocation with structured nested args" in text
     assert "Do not call Workflow with only `scriptPath`" in text
+    assert "### Foreground Guard Protocol" in text
+    assert "--workflow-task-output <WORKFLOW_TASK_OUTPUT_FILE>" in text
+    assert "Do not create `RUN_ROOT`, do not use `Write`" in text
+    assert "Only an explicit external user confirmation may set" in text
+    assert "must not infer or" in text
     assert "disable-model-invocation" not in text
 
 

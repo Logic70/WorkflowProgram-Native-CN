@@ -63,7 +63,7 @@ Native develop 由插件自身的 `workflows/workflowprogram-develop.js` 控制 
 
 当前支持交互式 Claude Code 中的 Native Workflow JS authoring。非交互式执行、自动化发布和已有 legacy 目标批量改写仍不支持。
 
-插件内 `workflows/*.js` 是运行时载荷，不会自动注册为可通过 `Workflow({ name, args })` 查找的 saved workflow。产品级 Native Workflow JS 入口由 Skill 负责语义发现和插件绝对路径解析，再通过 `Workflow({ scriptPath, args })` 启动；JS 负责控制顺序和 gate。
+插件内 `workflows/*.js` 是运行时载荷；不同 Claude Code 版本可能会把这些脚本按 `meta.name` 暴露成可发现 workflow。产品 JS 的 `meta.name` 因此使用 `workflowprogram-product-*` 内部名，避免遮蔽 `workflowprogram-develop/audit/iterate/validate/publish` 这些用户入口 Skill。产品级 Native Workflow JS 入口仍由 Skill 负责语义发现和插件绝对路径解析，再通过 `Workflow({ scriptPath, args })` 启动；JS 负责控制顺序和 gate。
 
 M7 的 `workflowprogram-native-authoring.js`、readiness packet 和 JSON renderer 继续作为过渡兼容资产。M9 已实现 develop 控制面，并已通过真实交互式 CLI 验证空参数调用进入 `BLOCKED_INPUT`；M10A 已完成 validate 与 audit；M10B 已完成 iterate Native Lessons Loop；M10C 已完成 publish 本地交付和显式外部 apply。M11 v1 已增加 `build-native-interactive-smoke.py`，用于生成人工执行 packet 并判读真实 JSONL。M12 已增加 `build-native-workflow-manifest.py` 和 `validate-publish-qualification.py`，并让 managed apply 对相同候选真正 no-op。当前支持 manual WSL login-shell execution + deterministic JSONL evaluation；Computer Use 终端驱动仍 deferred。五个产品 JS 均已移除 M8 骨架。
 
