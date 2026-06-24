@@ -13,7 +13,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Agent|Task|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Shell|ExitPlanMode",
+        "matcher": "Agent|Task|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Shell|Read|Glob|Grep|StructuredOutput|ExitPlanMode",
         "hooks": [
           {
             "type": "command",

@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
-  "generated_at": "2026-06-08T16:41:12Z",
+  "generated_at": "2026-06-24T09:41:01Z",
   "builder": "tools/build_plugin.py",
   "plugin_name": "workflowprogram-native-cn",
   "plugin_version": "0.1.28",
-  "source_commit": "7cee40a750c4694ecb2c489423874ccbd859a5b7",
+  "source_commit": "eb13be5922bcac364232e86991388ab17a2bc016",
   "source_dirty": true,
   "files": [
     {
@@ -43,6 +43,11 @@
       "size": 1258
     },
     {
+      "path": "agents/structured-phase-runner.md",
+      "sha256": "f57b3afb41c93997bb23754133f3f115f786b55f4962581c2e365b8cb4185d8a",
+      "size": 947
+    },
+    {
       "path": "agents/style-reviewer.md",
       "sha256": "fb69c93e13ddd8e90862f800869b660f9ea59b4ff9b0802aaa9578d782f9c87e",
       "size": 1099
@@ -71,6 +76,11 @@
       "path": "agents/workflow-verifier.md",
       "sha256": "a90cd9bdaaa3522ed28e3fd4f03b36b677cc3a2a07dac3d96007fc53997d7d6f",
       "size": 4592
+    },
+    {
+      "path": "bin/workflowprogram-artifact-writer",
+      "sha256": "bd52e95874e6d7570cc0ca4240da9cb802307a3a3dfe7e5ae6923b2870319e1e",
+      "size": 290
     },
     {
       "path": "bin/workflowprogram-clean",
@@ -124,8 +134,8 @@
     },
     {
       "path": "hooks/hooks.json",
-      "sha256": "0b789e65a8231cf3a90216068f86bf875562c2ea1a4bd3725789edd07bbf4e14",
-      "size": 648
+      "sha256": "e3945c683c26f4cb106674b5271d617b5fb9656e3b5456016e997e1ae18b46e3",
+      "size": 680
     },
     {
       "path": "requirements.lock.txt",
@@ -151,6 +161,11 @@
       "path": "scripts/apply-target-claude-guard.py",
       "sha256": "5a2e4852b9739ef319ccb45bbf9f1c8e591e901c10ac3ad6a043ca7744b8e01b",
       "size": 5468
+    },
+    {
+      "path": "scripts/artifact-payload-writer.py",
+      "sha256": "df5e85344cca745fe7f5000ad8ff7e45096bab420ac92403dc857e2a7c3755e3",
+      "size": 14582
     },
     {
       "path": "scripts/assess-native-legacy-retirement.py",
@@ -229,8 +244,8 @@
     },
     {
       "path": "scripts/generate-native-workflow.py",
-      "sha256": "606bbd17346b948f0c8627feb80962ecdfaf1cbb86b5b528e1e24d988f5f7d94",
-      "size": 53452
+      "sha256": "32146af4e1ddeef27d16e121e84efd6afaf7311fb573c56e4726e245b8e0d4d3",
+      "size": 206168
     },
     {
       "path": "scripts/generate-target-runtime.py",
@@ -349,8 +364,8 @@
     },
     {
       "path": "scripts/probe-native-workflow-capability.py",
-      "sha256": "e61113745fce8d71afa032554055a8dea2c944e43c2207bb719ca9a20e888886",
-      "size": 4171
+      "sha256": "1d761d5c2110d9a6057972d1d09510d92c16f0c317e55e53684809f64a6420be",
+      "size": 8371
     },
     {
       "path": "scripts/quality-gate.py",
@@ -499,8 +514,8 @@
     },
     {
       "path": "scripts/validate-workflow.py",
-      "sha256": "1661f9e1944978dc801b844656f36d064e3e272f10d64f7ebdb2f695200723e3",
-      "size": 69470
+      "sha256": "fd53bd302d07c055eba0a07b93c51069968e1baffd786e7f4f1dfb3070884a37",
+      "size": 69718
     },
     {
       "path": "scripts/verify-plugin-load.sh",
@@ -529,13 +544,13 @@
     },
     {
       "path": "scripts/workflowprogram-continue.py",
-      "sha256": "8a62f5665cc7db70177a19dc747deecbb695e76014759f9ee57191e93af46a5d",
-      "size": 13662
+      "sha256": "1b34b632735fe3ba1ca389d4c326739da1e5acee5c78f9f10644d38554ec205c",
+      "size": 17759
     },
     {
       "path": "scripts/workflowprogram-foreground-guard.py",
-      "sha256": "ed0d01aa03e551342af91d813a3185fc85928f5fc4710776c24c285d371e10a4",
-      "size": 27346
+      "sha256": "762f5ecf1972c0e5345aa9f63311baddf7692a039313665c071a376093fed086",
+      "size": 37341
     },
     {
       "path": "skills/commit/SKILL.md",
@@ -729,8 +744,8 @@
     },
     {
       "path": "skills/workflowprogram-native-develop/SKILL.md",
-      "sha256": "b304f8f7e2fb2a631a5f8690eb56fdd477c2272c5de20b05c30d61cbf9541b98",
-      "size": 18071
+      "sha256": "5ef13bf85d4f4e53960b4ef2d85ed86d6549a7fd53f408fbdcd91cc8eabbdd75",
+      "size": 18487
     },
     {
       "path": "skills/workflowprogram-orchestrate/SKILL.md",
@@ -754,8 +769,8 @@
     },
     {
       "path": "workflows/workflowprogram-develop.js",
-      "sha256": "547e6a7083a0fc38786af6de3565483ab4f2c7b39e5e8d96487b795b3ca01fa9",
-      "size": 57023
+      "sha256": "733878d96906895617163d54f73d32c7e7860fe6bc5dab04792bbf99e234433f",
+      "size": 80506
     },
     {
       "path": "workflows/workflowprogram-iterate.js",

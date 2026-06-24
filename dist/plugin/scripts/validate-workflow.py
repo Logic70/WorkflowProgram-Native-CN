@@ -51,9 +51,11 @@ PLUGIN_EXECUTABLE_PATHS = [
     ".claude-plugin/root/bin/workflowprogram-python",
     ".claude-plugin/root/bin/workflowprogram-doctor",
     ".claude-plugin/root/bin/workflowprogram-clean",
+    ".claude-plugin/root/bin/workflowprogram-artifact-writer",
     "dist/plugin/bin/workflowprogram-python",
     "dist/plugin/bin/workflowprogram-doctor",
     "dist/plugin/bin/workflowprogram-clean",
+    "dist/plugin/bin/workflowprogram-artifact-writer",
 ]
 
 ACTIVE_DESIGN_DOCS = {
@@ -492,6 +494,7 @@ def validate_required_paths(root: Path, result: ValidationResult) -> None:
         ".claude-plugin/root/bin/workflowprogram-python",
         ".claude-plugin/root/bin/workflowprogram-doctor",
         ".claude-plugin/root/bin/workflowprogram-clean",
+        ".claude-plugin/root/bin/workflowprogram-artifact-writer",
         "tools/build_plugin.py",
         "tools/generate-view.py",
         "tools/mock_runtime_host.py",
@@ -1335,6 +1338,7 @@ def validate_dist_plugin(root: Path, plugin_meta: Optional[Dict[str, Any]], resu
         dist_root / "bin" / "workflowprogram-python",
         dist_root / "bin" / "workflowprogram-doctor",
         dist_root / "bin" / "workflowprogram-clean",
+        dist_root / "bin" / "workflowprogram-artifact-writer",
         dist_root / "build-manifest.json",
         dist_root / "scripts" / "managed-assets.py",
         dist_root / "scripts" / "route-intent.py",

@@ -210,3 +210,22 @@
   - added `docs/workflowprogram-design-status.md` to separate active truth sources, supporting docs, and historical records
   - added `docs/workflowprogram-capability-matrix.json` and wired it into `.claude/scripts/validate-workflow.py`
   - historical design review docs now carry a top-level status note pointing back to the active truth-source index
+
+## 2026-06-24 WPN Native Capability Validation
+
+- status: IN PROGRESS
+- scope: WPN Native develop hardening for generated workflow authoring, static validation, controlled apply readiness, and report-producing smoke evidence. FreeSTRIDE `device_auth` is one high-complexity scenario used to exercise these WPN capabilities, not the product scope of WPN itself.
+- latest recorded verification:
+  - affected unit suites passed with 380 tests
+  - repository validator passed with `PASS: 1913 / FAIL: 0`
+  - plugin build completed through `tools/build_plugin.py`
+  - a generated candidate `.claude/workflows/stride-security-audit.js` passed static Native workflow validation in the FreeSTRIDE scenario
+  - scenario smoke `smoke056` completed as candidate-only PASS and produced report artifacts, finding evidence, `.report-latest`, `run_manifest.json`, and doctor output
+- latest blockers and risks:
+  - `smoke056` did not perform controlled apply, so it is not a full migration acceptance result
+  - `smoke057` stopped on an external `deepseek-v4-pro[1M]` quota 429; its pre-report files partially mixed with the scenario target root output directory, so that directory is not fresh acceptance evidence
+  - controlled-apply precheck exposed a WPN renderer/apply boundary mismatch: `.workflowprogram/managed-files.json` had been staged as an ordinary candidate supporting asset, but the file is owned by `managed-assets.py apply-staged`
+- notes:
+  - structured phase runner, artifact payload writer, deterministic phase execution, deterministic Report/Finalize, Result Auditor Pre boundary handling, scenario-specific must-detect compatibility, and DFD aliasing were hardened during the recent WPN work
+  - documentation now records that `managed-files` is traceability metadata, not a staged target manifest
+  - the latest generator change for skipping staged `managed-files` still needs a local validation rerun before the migration can be treated as apply-ready

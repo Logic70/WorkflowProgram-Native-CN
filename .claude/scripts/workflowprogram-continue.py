@@ -80,6 +80,45 @@ def emit_report(report: dict[str, Any], out_path: Path | None, as_json: bool) ->
         print("FAIL: " + "; ".join(str(item) for item in report.get("blockingIssues", [])), file=sys.stderr)
 
 
+def project_template_phase_metadata(authoring_spec: dict[str, Any]) -> dict[str, Any]:
+    """Project template phases from phase_contracts before persistence."""
+
+    template = str(authoring_spec.get("template", "")).strip()
+    phase_contracts = authoring_spec.get("phase_contracts")
+    if not template or not isinstance(phase_contracts, list) or not phase_contracts:
+        return authoring_spec
+
+    derived_phases: list[dict[str, str]] = []
+    for index, contract in enumerate(phase_contracts):
+        if not isinstance(contract, dict):
+            raise ValueError(f"phase_contracts[{index}] must be an object.")
+        title = str(contract.get("phase", "")).strip()
+        if not title:
+            raise ValueError(f"phase_contracts[{index}].phase must be a non-empty string.")
+        phase: dict[str, str] = {"title": title}
+        detail = str(contract.get("detail", "")).strip()
+        if detail:
+            phase["detail"] = detail
+        derived_phases.append(phase)
+
+    explicit_phases = authoring_spec.get("phases")
+    if explicit_phases is not None and not isinstance(explicit_phases, list):
+        raise ValueError("Template authoring spec phases must be an array when provided.")
+    if isinstance(explicit_phases, list) and explicit_phases:
+        explicit_titles = [
+            str(phase.get("title", "")).strip()
+            for phase in explicit_phases
+            if isinstance(phase, dict) and str(phase.get("title", "")).strip()
+        ]
+        derived_titles = [phase["title"] for phase in derived_phases]
+        if explicit_titles != derived_titles:
+            raise ValueError(
+                "Template authoring spec phases must match phase_contracts[].phase values."
+            )
+
+    return {**authoring_spec, "phases": derived_phases}
+
+
 def handoff_envelope_from_result(result: dict[str, Any], target_root: Path, run_root: Path) -> dict[str, Any]:
     """Build the generator handoff from product-owned fields only.
 
@@ -94,6 +133,9 @@ def handoff_envelope_from_result(result: dict[str, Any], target_root: Path, run_
         generation_request = result.get("generationRequest")
     if not isinstance(generation_request, dict):
         raise ValueError("generationRequest is missing or not a JSON object.")
+    authoring_spec = source.get("authoringSpec", result.get("authoringSpec"))
+    if isinstance(authoring_spec, dict):
+        authoring_spec = project_template_phase_metadata(authoring_spec)
     normalized_generation_request = dict(generation_request)
     normalized_generation_request["targetRoot"] = str(target_root)
     normalized_generation_request["runRoot"] = str(run_root)
@@ -107,7 +149,7 @@ def handoff_envelope_from_result(result: dict[str, Any], target_root: Path, run_
         "requirementSummary": source.get("requirementSummary", result.get("requirementSummary")),
         "designEvidence": source.get("designEvidence", result.get("designEvidence")),
         "reviewEvidence": source.get("reviewEvidence", result.get("reviewEvidence")),
-        "authoringSpec": source.get("authoringSpec", result.get("authoringSpec")),
+        "authoringSpec": authoring_spec,
         "generationRequest": normalized_generation_request,
     }
     return {key: value for key, value in handoff.items() if value is not None}
@@ -142,6 +184,38 @@ def build_continuation_report(
             " args: { ...prevArgs, generationEvidence: <evidence> } })"
         ),
     }
+
+
+def _validate_authoring_spec_canonical(authoring_spec: dict[str, Any]) -> None:
+    """Phase 3: Validate canonical projection rules on the authoring spec.
+
+    This is a safety net - the develop.js should have already projected the
+    canonical spec, but this catches any drift before persistence.
+    """
+    name = str(authoring_spec.get("name", "")).strip()
+    if not name:
+        return
+    primary_workflow_path = f".claude/workflows/{name}.js"
+
+    asset_disposition = authoring_spec.get("asset_disposition", [])
+    supporting_assets = authoring_spec.get("supporting_assets", [])
+
+    # Primary workflow path must not be in supporting_assets
+    for asset in supporting_assets:
+        asset_path = str(asset.get("path", "")).strip()
+        if asset_path == primary_workflow_path:
+            raise ValueError(
+                f"Canonical violation: primary workflow path in supporting_assets: {asset_path}"
+            )
+
+    # Primary workflow disposition must not carry supporting_asset_path
+    for item in asset_disposition:
+        path = str(item.get("path", "")).strip()
+        sap = str(item.get("supporting_asset_path", "")).strip()
+        if path == primary_workflow_path and sap:
+            raise ValueError(
+                f"Canonical violation: primary workflow disposition with supporting_asset_path: {path}"
+            )
 
 
 def build_error_report(
@@ -229,6 +303,19 @@ def main() -> int:
         authoring_spec = result.get("authoringSpec")
         if not isinstance(authoring_spec, dict):
             raise ValueError("authoringSpec is missing or not a JSON object.")
+        authoring_spec = project_template_phase_metadata(authoring_spec)
+        result = {**result, "authoringSpec": authoring_spec}
+        if isinstance(result.get("generationHandoff"), dict):
+            generation_handoff = dict(result["generationHandoff"])
+            handoff_authoring_spec = generation_handoff.get("authoringSpec")
+            generation_handoff["authoringSpec"] = project_template_phase_metadata(
+                handoff_authoring_spec if isinstance(handoff_authoring_spec, dict) else authoring_spec
+            )
+            result["generationHandoff"] = generation_handoff
+
+        # Phase 3: Validate canonical projection consistency
+        # The generator will also revalidate, but continue.py validates early.
+        _validate_authoring_spec_canonical(authoring_spec)
 
         # ── 3. Write handoff input JSON ────────────────────────────────────
         handoff_input_path = (

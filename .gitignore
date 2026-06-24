@@ -3,6 +3,10 @@
 .claude/history/
 .claude/memory/
 .codex/
+.codex-runs/
+.claude-bypass-runs/
+.playwright-mcp/
+outputs/
 openspec/
 **/*.local.json
 .mcp.json

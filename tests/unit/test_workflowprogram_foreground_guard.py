@@ -157,6 +157,29 @@ def write_transcript(path: Path, prompt: str) -> None:
     )
 
 
+def append_structured_output_success(path: Path, *, agent_id: str = "agent-dfd") -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "agentId": agent_id,
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "call_structured",
+                                "content": "Structured output provided successfully",
+                            }
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
 def test_guard_blocks_foreground_agent_for_wpn_intent(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     write_transcript(transcript, "继续 WPN / WorkflowProgram Native 对 Free STRIDE 的迁移回归")
@@ -268,6 +291,361 @@ def test_guard_blocks_shell_write_before_wpn_state(tmp_path: Path) -> None:
     assert "foreground shell write" in completed.stderr
 
 
+def test_guard_allows_workflow_subagent_shell_write_for_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "isSidechain": True,
+            "attributionAgent": "workflow-subagent",
+            "agentId": "agent-dfd",
+            "tool_input": {
+                "command": "mkdir -p outputs/stride-audit",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout or completed.stderr
+
+
+def test_guard_allows_workflow_subagent_shell_write_from_transcript_path(tmp_path: Path) -> None:
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-dfd.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "cppcheck --version 2>&1",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout or completed.stderr
+
+
+def test_guard_allows_workflow_subagent_file_write_for_wpn_intent(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Write",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "isSidechain": True,
+            "attributionAgent": "workflow-subagent",
+            "agentId": "agent-dfd",
+            "tool_input": {
+                "file_path": str(target / "outputs" / "stride-audit" / "dfd.yaml"),
+                "content": "dfd_version: 1.0\n",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout or completed.stderr
+
+
+def test_guard_blocks_workflow_subagent_shell_after_structured_output_success(tmp_path: Path) -> None:
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-dfd.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    append_structured_output_success(transcript, agent_id="agent-dfd")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "isSidechain": True,
+            "attributionAgent": "workflow-subagent",
+            "agentId": "agent-dfd",
+            "tool_input": {
+                "command": "python -c \"open('outputs/stride-audit/parse_result.json', 'w').write('{}')\"",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "BLOCKED"
+    assert "already completed StructuredOutput" in payload["reason"]
+    assert "Respond exactly DONE" in payload["reason"]
+
+
+def test_guard_blocks_structured_phase_runner_after_success_from_session_transcript(tmp_path: Path) -> None:
+    session = tmp_path / "projects" / "repo" / "session-123.jsonl"
+    session.parent.mkdir(parents=True)
+    write_transcript(session, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    agent_transcript = session.with_suffix("") / "subagents" / "workflows" / "wf_123" / "agent-a84f1800.jsonl"
+    agent_transcript.parent.mkdir(parents=True)
+    write_transcript(agent_transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    append_structured_output_success(agent_transcript, agent_id="a84f1800")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(session),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "a84f1800",
+            "tool_input": {
+                "command": "cat > outputs/stride-audit/parse_result.json << 'EOF'\n{}\nEOF",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "BLOCKED"
+    assert "already completed StructuredOutput" in payload["reason"]
+    assert "Respond exactly DONE" in payload["reason"]
+
+
+def test_guard_blocks_workflow_subagent_structured_output_retry_after_success(tmp_path: Path) -> None:
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-dfd.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    append_structured_output_success(transcript, agent_id="agent-dfd")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "StructuredOutput",
+            "transcript_path": str(transcript),
+            "isSidechain": True,
+            "attributionAgent": "workflow-subagent",
+            "agentId": "agent-dfd",
+            "tool_input": {"status": "PASS"},
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "already completed StructuredOutput" in payload["reason"]
+    assert "Respond exactly DONE" in payload["reason"]
+
+
+def test_guard_blocks_workflow_subagent_read_after_structured_output_success(tmp_path: Path) -> None:
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-dfd.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    append_structured_output_success(transcript, agent_id="agent-dfd")
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Read",
+            "transcript_path": str(transcript),
+            "isSidechain": True,
+            "attributionAgent": "workflow-subagent",
+            "agentId": "agent-dfd",
+            "tool_input": {"file_path": str(tmp_path / "target" / "outputs" / "stride-audit" / "parse_result.json")},
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "already completed StructuredOutput" in payload["reason"]
+    assert "Respond exactly DONE" in payload["reason"]
+
+
+def artifact_writer_prompt(command: str) -> str:
+    return (
+        "You are a deterministic artifact command runner. Run exactly the Bash command between "
+        "the command markers once.\n"
+        "Artifact operation: write\n"
+        "File path: D:/Code/FreeSTRIDE/outputs/stride-audit/dfd.yaml\n"
+        "Chunk index: 1\n"
+        "Chunk count: 1\n"
+        "Content base64:\n"
+        "---BEGIN_ARTIFACT_BASE64---\n"
+        "e30=\n"
+        "---END_ARTIFACT_BASE64---\n"
+        "---BEGIN_ARTIFACT_COMMAND---\n"
+        f"{command}\n"
+        "---END_ARTIFACT_COMMAND---\n"
+    )
+
+
+def artifact_file_writer_prompt(commands: list[str]) -> str:
+    blocks = []
+    for index, command in enumerate(commands, start=1):
+        blocks.append(
+            f"---BEGIN_ARTIFACT_COMMAND {index}/{len(commands)} {'write' if index == 1 else 'append'}---\n"
+            f"{command}\n"
+            f"---END_ARTIFACT_COMMAND {index}/{len(commands)} {'write' if index == 1 else 'append'}---"
+        )
+    return (
+        "You are a deterministic artifact file command runner. Run every Bash command between "
+        "the command markers exactly once, in ascending chunk order.\n"
+        "Artifact operation: write\n"
+        "File path: D:/Code/FreeSTRIDE/outputs/stride-audit/dfd.yaml\n"
+        f"Chunk count: {len(commands)}\n"
+        "Artifact payloads are embedded only in payload markers for the helper.\n"
+        + "\n".join(blocks)
+        + "\n"
+    )
+
+
+def artifact_helper_command(payload_id: str = "apw-1-0-test", operation: str = "write", offset: int = 0) -> str:
+    return (
+        "workflowprogram-artifact-writer "
+        f"--payload-id '{payload_id}' "
+        "--target-file 'D:/Code/FreeSTRIDE/outputs/stride-audit/dfd.yaml' "
+        f"--operation '{operation}' "
+        f"--byte-offset {offset} --mask-key 173"
+    )
+
+
+def test_guard_blocks_artifact_writer_write_tool_before_structured_output(tmp_path: Path) -> None:
+    command = "python3 -c 'import base64,pathlib; pathlib.Path(\"out\").write_bytes(base64.b64decode(\"e30=\"))'"
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-artifact.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, artifact_writer_prompt(command))
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Write",
+            "transcript_path": str(transcript),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "artifact",
+            "tool_input": {
+                "file_path": str(tmp_path / "target" / "outputs" / "stride-audit" / "write_chunk1.py"),
+                "content": "helper",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "Artifact writer workflow subagents may only call Bash" in payload["reason"]
+
+
+def test_guard_blocks_artifact_writer_modified_bash_command(tmp_path: Path) -> None:
+    command = "python3 -c 'import base64,pathlib; pathlib.Path(\"out\").write_bytes(base64.b64decode(\"e30=\"))'"
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-artifact.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, artifact_writer_prompt(command))
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "transcript_path": str(transcript),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "artifact",
+            "tool_input": {
+                "command": "python3 D:/Code/FreeSTRIDE/outputs/stride-audit/write_chunk1.py",
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "must run exactly one generated command" in payload["reason"]
+    assert "Do not retry rewritten commands" in payload["reason"]
+    assert "StructuredOutput with status BLOCKED" in payload["reason"]
+
+
+def test_guard_allows_artifact_writer_exact_bash_command(tmp_path: Path) -> None:
+    command = artifact_helper_command()
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-artifact.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, artifact_writer_prompt(command))
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "transcript_path": str(transcript),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "artifact",
+            "tool_input": {
+                "command": command,
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout or completed.stderr
+
+
+def test_guard_allows_artifact_file_writer_marker_command(tmp_path: Path) -> None:
+    commands = [
+        artifact_helper_command("apw-1-0-test", "write", 0),
+        artifact_helper_command("apw-2-10-test", "append", 16),
+    ]
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-artifact.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, artifact_file_writer_prompt(commands))
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "transcript_path": str(transcript),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "artifact",
+            "tool_input": {
+                "command": commands[1],
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout or completed.stderr
+
+
+def test_guard_blocks_artifact_file_writer_combined_bash_command(tmp_path: Path) -> None:
+    commands = [
+        artifact_helper_command("apw-1-0-test", "write", 0),
+        artifact_helper_command("apw-2-10-test", "append", 16),
+    ]
+    transcript = tmp_path / "projects" / "repo" / "subagents" / "workflows" / "wf_123" / "agent-artifact.jsonl"
+    transcript.parent.mkdir(parents=True)
+    write_transcript(transcript, artifact_file_writer_prompt(commands))
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "transcript_path": str(transcript),
+            "agent_type": "workflowprogram-native-cn:structured-phase-runner",
+            "agent_id": "artifact",
+            "tool_input": {
+                "command": " && ".join(commands),
+            },
+        },
+    )
+
+    assert completed.returncode == 2
+    payload = json.loads(completed.stdout)
+    assert "combined commands" in payload["reason"]
+    assert "StructuredOutput with status BLOCKED" in payload["reason"]
+
+
 def test_guard_allows_read_only_shell_before_wpn_state(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
@@ -282,6 +660,70 @@ def test_guard_allows_read_only_shell_before_wpn_state(tmp_path: Path) -> None:
             "transcript_path": str(transcript),
             "tool_input": {
                 "command": "git branch --show-current",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_allows_product_output_shell_write_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "mkdir -p outputs/stride-audit",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_allows_dev_null_redirection_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Bash",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "command": "ls targets/security_device_auth 2>/dev/null | head -20",
+            },
+        },
+    )
+
+    assert completed.returncode == 0, completed.stdout
+
+
+def test_guard_allows_product_output_file_write_before_wpn_state(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_transcript(transcript, "WPN / WorkflowProgram Native regression for FreeSTRIDE")
+    target = tmp_path / "target"
+    target.mkdir()
+
+    completed = run_guard(
+        "check",
+        payload={
+            "tool_name": "Write",
+            "cwd": str(target),
+            "transcript_path": str(transcript),
+            "tool_input": {
+                "file_path": str(target / "outputs" / "stride-audit" / "parse_result.json"),
+                "content": "{}\n",
             },
         },
     )
@@ -689,6 +1131,10 @@ def test_hook_matcher_covers_powershell_and_shell() -> None:
     matcher_text = "|".join(matchers)
     assert "PowerShell" in matcher_text
     assert "Shell" in matcher_text
+    assert "Read" in matcher_text
+    assert "Glob" in matcher_text
+    assert "Grep" in matcher_text
+    assert "StructuredOutput" in matcher_text
     assert "ExitPlanMode" in matcher_text
 
 

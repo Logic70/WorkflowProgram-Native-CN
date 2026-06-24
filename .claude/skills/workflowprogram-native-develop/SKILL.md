@@ -52,6 +52,12 @@ version: 1.1.0
    `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE` with the session JSONL path and do not
    fall back to foreground `Agent`, `Bash`, `PowerShell`, `Write`, or direct
    Python runner execution.
+6. Treat non-interactive `claude -p` / `--print` / `sdk-cli` sessions as
+   unsupported for `ultrawork` unless the transcript already proves a real
+   `Workflow({ scriptPath, args })` tool invocation. If the session has only
+   shell/read/edit tools, stop with `BLOCKED_WORKFLOW_TOOL_UNAVAILABLE` before
+   route/preflight, `RUN_ROOT` creation, or target-project inspection beyond
+   deriving the invocation fields.
 
 ## Step 2: Launch Or Reinvoke Product JS
 

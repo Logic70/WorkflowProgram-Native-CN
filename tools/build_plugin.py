@@ -224,6 +224,7 @@ def ensure_executable_bits() -> None:
         "bin/workflowprogram-python",
         "bin/workflowprogram-doctor",
         "bin/workflowprogram-clean",
+        "bin/workflowprogram-artifact-writer",
     ):
         path = DIST / relative
         if path.exists():

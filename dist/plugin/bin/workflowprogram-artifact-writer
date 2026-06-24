@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  export CLAUDE_PLUGIN_ROOT
+fi
+
+exec "${CLAUDE_PLUGIN_ROOT}/bin/workflowprogram-python" "${CLAUDE_PLUGIN_ROOT}/scripts/artifact-payload-writer.py" "$@"

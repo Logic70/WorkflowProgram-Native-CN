@@ -80,6 +80,17 @@ const pathIdentity = value => {
   if (wsl) return `${wsl[1].toLowerCase()}:/${wsl[2]}`
   return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized
 }
+const targetRelativePath = (value, targetRootValue) => {
+  if (!nonEmpty(value)) return ''
+  const trimmed = value.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  const identity = pathIdentity(trimmed)
+  const targetIdentity = pathIdentity(targetRootValue)
+  if (targetIdentity && identity === targetIdentity) return ''
+  if (targetIdentity && identity.startsWith(`${targetIdentity}/`)) {
+    return identity.slice(targetIdentity.length + 1)
+  }
+  return trimmed.replace(/^\.\//, '')
+}
 const nonEmptyPathArray = value => asArray(value).length > 0 && asArray(value).every(isAbsolutePathRef)
 const hasLensContent = value => {
   if (typeof value === 'string') return value.trim().length > 0
@@ -105,7 +116,9 @@ const hasEvidence = evidence =>
   nonEmptyPathArray(evidence?.evidence) &&
   asArray(evidence?.blockingIssues).length === 0
 const dispositionActions = ['retain', 'generate', 'update', 'archive', 'remove', 'defer', 'not-applicable']
-const actionsRequiringSupportingAsset = ['generate', 'update', 'archive']
+const actionsRequiringSupportingAsset = ['generate', 'update']
+const contentActions = ['generate', 'update']
+const nonContentActions = ['retain', 'archive', 'remove', 'defer', 'not-applicable']
 const normalizeDisposition = item => ({
   path: item?.path || '',
   action: item?.action || '',
@@ -114,15 +127,258 @@ const normalizeDisposition = item => ({
 })
 const dispositionKey = value =>
   JSON.stringify(asArray(value).map(normalizeDisposition).sort((left, right) => left.path.localeCompare(right.path)))
-const validAssetDisposition = (value, supportingAssets) => {
+
+const SUPPORTING_ASSET_KIND_RULES = [
+  { kind: 'skill', prefix: '.claude/skills/', suffix: '/SKILL.md' },
+  { kind: 'agent', prefix: '.claude/agents/', suffix: '.md' },
+  { kind: 'script', prefix: '.claude/scripts/', suffix: null },
+  { kind: 'compatibility-command', prefix: '.claude/commands/', suffix: '.md' },
+  { kind: 'settings', prefix: '.claude/settings.json', suffix: null, exact: true },
+  { kind: 'workflow-spec-ir', prefix: '.workflowprogram/design/', suffix: 'workflow-spec.yaml' },
+  { kind: 'authoring-metadata', prefix: '.workflowprogram/design/', suffix: null },
+  { kind: 'managed-files', prefix: '.workflowprogram/managed-files.json', suffix: null, exact: true },
+]
+
+const deriveSupportingAssetKind = path => {
+  const normalized = (path || '').trim()
+  if (!normalized) return ''
+  for (const rule of SUPPORTING_ASSET_KIND_RULES) {
+    if (rule.exact) {
+      if (normalized === rule.prefix) return rule.kind
+      continue
+    }
+    if (!normalized.startsWith(rule.prefix)) continue
+    if (rule.suffix === null) return rule.kind
+    if (normalized.endsWith(rule.suffix)) return rule.kind
+  }
+  return ''
+}
+
+const isRunEvidencePath = path =>
+  nonEmpty(path) &&
+  (
+    path === '.workflowprogram/runs' ||
+    path.startsWith('.workflowprogram/runs/') ||
+    path === 'outputs' ||
+    path.startsWith('outputs/')
+  )
+
+const authoringFixableCanonicalBlocker = message =>
+  nonEmpty(message) &&
+  (
+    message.includes('Missing authoring supporting_assets content') ||
+    message.includes('Missing authoring supporting asset content') ||
+    message.includes('Supporting asset must have non-empty content')
+  )
+
+const canonicalizeAssetDisposition = (designEvidence, authoringSpec, operation, targetRoot) => {
+  // Phase 3: Canonical Asset And Supporting Asset Boundary
+  // Design assetDisposition is the canonical source; authoring only supplies content.
+  // This function projects designEvidence.assetDisposition into the final
+  // authoringSpec.asset_disposition and normalizes supporting_assets kind/reason.
+  const workflowName = authoringSpec?.name || ''
+  const primaryWorkflowPath = `.claude/workflows/${workflowName}.js`
+
+  const designDisposition = asArray(designEvidence?.assetDisposition)
+  const designContentPaths = new Set(
+    designDisposition
+      .map(item => ({
+        path: targetRelativePath(item?.path || '', targetRoot),
+        action: (item?.action || '').trim(),
+      }))
+      .filter(item => nonEmpty(item.path) && contentActions.includes(item.action))
+      .map(item => item.path)
+  )
+  const authoringSupportingAssets = asArray(authoringSpec?.supporting_assets)
+  const authoringSupportingPaths = new Set(
+    authoringSupportingAssets
+      .map(asset => targetRelativePath(asset?.path || '', targetRoot))
+      .filter(nonEmpty)
+  )
+
+  // --- Build canonical asset_disposition from design evidence ---
+  // Design owns path, action, supportingAssetPath, and reason.
+  // Primary workflow disposition must not carry supporting_asset_path.
+  // Non-content actions must not carry supporting_asset_path.
+  const canonicalDisposition = designDisposition.map(item => {
+    const path = targetRelativePath(item?.path || '', targetRoot)
+    let action = (item?.action || '').trim()
+    const reason = (item?.reason || '').trim()
+    let rawSupportingPath = targetRelativePath(item?.supportingAssetPath || item?.supporting_asset_path || '', targetRoot)
+    if (operation === 'migrate' && path.startsWith('.workflowprogram/runtime/') && contentActions.includes(action)) {
+      action = 'archive'
+      rawSupportingPath = ''
+    }
+    if (path === primaryWorkflowPath || nonContentActions.includes(action)) {
+      rawSupportingPath = ''
+    } else {
+      const dispositionKind = deriveSupportingAssetKind(path)
+      const supportingKind = deriveSupportingAssetKind(rawSupportingPath)
+      const unstableSupportingPath =
+        !nonEmpty(rawSupportingPath) ||
+        isRunEvidencePath(rawSupportingPath) ||
+        rawSupportingPath === primaryWorkflowPath ||
+        (designContentPaths.has(rawSupportingPath) && rawSupportingPath !== path) ||
+        (nonEmpty(dispositionKind) && nonEmpty(supportingKind) && dispositionKind !== supportingKind)
+      if (isRunEvidencePath(path)) rawSupportingPath = ''
+      if (contentActions.includes(action) && unstableSupportingPath) rawSupportingPath = path
+      if (
+        contentActions.includes(action) &&
+        path !== primaryWorkflowPath &&
+        !authoringSupportingPaths.has(rawSupportingPath) &&
+        authoringSupportingPaths.has(path)
+      ) {
+        rawSupportingPath = path
+      }
+    }
+
+    return { path, action, reason, supporting_asset_path: rawSupportingPath }
+  }).filter(item => !isRunEvidencePath(item.path))
+  // Sort deterministically by path
+  canonicalDisposition.sort((left, right) => left.path.localeCompare(right.path))
+
+  // --- Validate canonical disposition ---
+  const canonicalSupportingPaths = new Set(
+    canonicalDisposition
+      .filter(d => nonEmpty(d.supporting_asset_path))
+      .map(d => d.supporting_asset_path)
+  )
+  const canonicalBlockers = []
+  for (const item of canonicalDisposition) {
+    if (!nonEmpty(item.path) || !dispositionActions.includes(item.action) || !nonEmpty(item.reason)) {
+      canonicalBlockers.push(`Invalid canonical assetDisposition: missing path/action/reason for ${item.path || '<empty>'}`)
+      continue
+    }
+    // Primary workflow rules
+    if (item.path === primaryWorkflowPath) {
+      if (nonEmpty(item.supporting_asset_path)) {
+        canonicalBlockers.push(`Primary workflow disposition must not carry supporting_asset_path: ${item.path}`)
+      }
+      continue
+    }
+    // Non-content actions must not have supporting_asset_path
+    if (nonContentActions.includes(item.action)) {
+      if (nonEmpty(item.supporting_asset_path)) {
+        canonicalBlockers.push(`Non-content action '${item.action}' must not carry supporting_asset_path for ${item.path}`)
+      }
+      continue
+    }
+    // Content actions must have a supporting_asset_path
+    if (contentActions.includes(item.action)) {
+      if (!nonEmpty(item.supporting_asset_path)) {
+        canonicalBlockers.push(`Content action '${item.action}' requires supporting_asset_path for ${item.path}`)
+      }
+    }
+  }
+
+  // --- Build canonical supporting_assets ---
+  // supporting_assets paths must be a subset of canonical Design supporting paths.
+  // Authoring supplies content; kind is derived from path; reason from design disposition.
+  const canonicalSupportingAssets = []
+  const seenSupportingPaths = new Set()
+
+  for (const asset of authoringSupportingAssets) {
+    const assetPath = targetRelativePath(asset?.path || '', targetRoot)
+    const content = typeof asset?.content === 'string' ? asset.content : ''
+
+    // Never allow primary workflow path in supporting assets; body/template is
+    // the only content source for the primary workflow.
+    if (assetPath === primaryWorkflowPath) {
+      canonicalBlockers.push(`Primary workflow path must not appear in supporting_assets: ${assetPath}`)
+      continue
+    }
+
+    // Authoring may over-produce files. Design remains the source of truth:
+    // ignore supporting assets that are not referenced by canonical Design.
+    if (!canonicalSupportingPaths.has(assetPath)) {
+      continue
+    }
+
+    // Derive kind mechanically from path
+    const derivedKind = deriveSupportingAssetKind(assetPath)
+    if (!derivedKind) {
+      canonicalBlockers.push(`Cannot derive kind from supporting asset path: ${assetPath}`)
+      continue
+    }
+
+    // Derive reason from canonical design disposition
+    const matchingDisposition = canonicalDisposition.find(d => d.supporting_asset_path === assetPath)
+    const reason = matchingDisposition ? matchingDisposition.reason : ''
+
+    if (!nonEmpty(content)) {
+      canonicalBlockers.push(`Supporting asset must have non-empty content: ${assetPath}`)
+      continue
+    }
+
+    if (seenSupportingPaths.has(assetPath)) {
+      canonicalBlockers.push(`Duplicate supporting asset path: ${assetPath}`)
+      continue
+    }
+    seenSupportingPaths.add(assetPath)
+
+    canonicalSupportingAssets.push({
+      kind: derivedKind,
+      path: assetPath,
+      content: content,
+      reason: reason,
+    })
+  }
+  canonicalSupportingAssets.sort((left, right) => left.path.localeCompare(right.path))
+
+  // --- Check for missing supporting assets ---
+  // Every canonical supporting path that has a content action needs a matching supporting asset
+  const missingSupportingAssets = []
+  for (const item of canonicalDisposition) {
+    if (!contentActions.includes(item.action)) continue
+    if (!nonEmpty(item.supporting_asset_path)) continue
+    if (item.path === primaryWorkflowPath) continue  // primary workflow gets content from body/template
+    if (!seenSupportingPaths.has(item.supporting_asset_path)) {
+      missingSupportingAssets.push({
+        path: item.supporting_asset_path,
+        dispositionPath: item.path,
+        action: item.action,
+      })
+      canonicalBlockers.push(`Missing authoring supporting asset content for ${item.path}: expected supporting_assets.path ${item.supporting_asset_path}`)
+    }
+  }
+
+  return {
+    canonicalSpec: {
+      ...authoringSpec,
+      asset_disposition: canonicalDisposition,
+      supporting_assets: canonicalSupportingAssets,
+    },
+    canonicalBlockers,
+    missingSupportingAssets,
+    primaryWorkflowPath,
+    // Canonical design key: design disposition normalized with the same
+    // canonical rules so disposition key comparison works after projection.
+    canonicalDesignDisposition: canonicalDisposition,
+  }
+}
+
+const validAssetDisposition = (value, supportingAssets, primaryWorkflowPath) => {
   const supportingPaths = new Set(asArray(supportingAssets).map(item => item?.path).filter(nonEmpty))
   return asArray(value).every(item => {
     const normalized = normalizeDisposition(item)
     if (!nonEmpty(normalized.path) || !dispositionActions.includes(normalized.action) || !nonEmpty(normalized.reason)) return false
+    // Primary workflow must not carry supportingAssetPath
+    if (primaryWorkflowPath && normalized.path === primaryWorkflowPath && nonEmpty(normalized.supportingAssetPath)) return false
+    // Non-content actions must not carry supportingAssetPath
+    if (nonContentActions.includes(normalized.action) && nonEmpty(normalized.supportingAssetPath)) return false
     if (actionsRequiringSupportingAsset.includes(normalized.action)) {
+      if (primaryWorkflowPath && normalized.path === primaryWorkflowPath) return true  // primary workflow gets content from body/template
       return nonEmpty(normalized.supportingAssetPath) && supportingPaths.has(normalized.supportingAssetPath)
     }
     return !nonEmpty(normalized.supportingAssetPath) || supportingPaths.has(normalized.supportingAssetPath)
+  })
+}
+
+const validSupportingAssets = (supportingAssets, primaryWorkflowPath) => {
+  // supporting_assets[].path must never equal the primary workflow output path
+  return asArray(supportingAssets).every(item => {
+    const assetPath = (item?.path || '').trim()
+    return assetPath !== primaryWorkflowPath && deriveSupportingAssetKind(assetPath) !== ''
   })
 }
 const requiresAssetDisposition = operation => ['update', 'migrate'].includes(operation)
@@ -192,6 +448,8 @@ const isDesignWorkItemDecision = decision => {
     /smoke[^.]{0,80}fixture/,
     /managed[-\s]?files?[^.]{0,80}(count|entry|entries)/,
     /agent[^.]{0,80}(name|naming|mapping|convention)/,
+    /(entry\s*point|command|workflow registration|settings\.json)/,
+    /(agents\.md|claude\.md|readme|docs?)[^.]{0,80}(remain|update|match|align|reference)/,
   ]
   const designIntent = [
     /needs?\s+to\s+be\s+(designed|determined|defined|mapped|specified|finali[sz]ed|closed)/,
@@ -206,12 +464,41 @@ const isDesignWorkItemDecision = decision => {
   const userBoundary = /(managed\s+apply|write\s+boundary|approval|user\s+approval|target\s+root|external\s+policy)/.test(text)
   return !userBoundary && designSubjects.some(pattern => pattern.test(text)) && designIntent.some(pattern => pattern.test(text))
 }
+const isDefaultedExistingMigrationDecision = (text, requirementSummary) => {
+  const requirementText = normalizeDecisionText([
+    requirementSummary?.request,
+    requirementSummary?.lenses?.purpose,
+    requirementSummary?.lenses?.processModel,
+    requirementSummary?.lenses?.decisionModel,
+  ].filter(nonEmpty).join(' '))
+  const existingMigration =
+    /migrat/.test(requirementText) &&
+    /(existing|preserv|current|keep|support)/.test(requirementText)
+  if (!existingMigration) return false
+  return [
+    /(upgrade|v0\.6|v0\.5|evolved design intent|pipeline)/,
+    /(entry\s*point|command|workflow registration|settings\.json)/,
+    /(agents\.md|claude\.md|readme|docs?)[^.]{0,120}(remain|update|match|align|reference)/,
+  ].some(pattern => pattern.test(text))
+}
 const isNonBlockingMigrationDecision = (decision, requirementSummary, explorations) => {
   const text = decisionText(decision)
   if (!nonEmpty(text)) return true
+  const normalizedText = normalizeDecisionText(text)
+  const unresolvedUserBoundary =
+    /(managed\s+apply|write\s+boundary|approv\w*|external\s+policy|target\s+root)/.test(normalizedText) &&
+    /(\?|should|what|which|whether|does|requires?)/.test(normalizedText)
+  if (unresolvedUserBoundary) return false
   if (/no\s+(true\s+)?blockers?\s+identified/i.test(text)) return true
   if (/all\s+\d*\+?\s*decisions\s+resolved/i.test(text)) return true
+  if (/^confirmed\b/i.test(text) && /(resolved|settled|exhaustive|reviewed|complete|no\s+(additional|unresolved)|migration decisions?|blockers?|sources?|assets?)/i.test(text)) return true
+  if (/resolved migration decisions are exhaustive/i.test(text)) return true
+  if (/no unresolved topology/i.test(text) && /decisions?\s+remain/i.test(text)) return true
+  if (/no additional user decisions? required/i.test(text)) return true
+  if (/no additional external user decisions?/i.test(text)) return true
+  if (/no external user decisions?/i.test(text) && /resolved migration decisions/i.test(text)) return true
   return (
+    isDefaultedExistingMigrationDecision(normalizedText, requirementSummary) ||
     isDesignWorkItemDecision(decision) ||
     isCoveredByMigrationDecisions(text, requirementSummary?.migrationDecisions) ||
     isCoveredByAssetDisposition(text, explorations)
@@ -233,6 +520,25 @@ const designPolicyViolations = (evidence, requirementSummary) => {
     .map(item => `Invalid assetDisposition: ${item.path} cannot be removed by removeDotAgentsDir; retain/reuse .claude registry assets or disposition individual files unless removeClaudeAgentsDir=true.`)
 }
 const explorationDesignBlockers = (explorations, operation, requirementSummary) => {
+  const validationBlockers = []
+  for (let i = 0; i < explorations.length; i++) {
+    const item = explorations[i]
+    const source = i === 0 ? 'target-context' : i === 1 ? 'runtime-boundaries' : `item-${i}`
+    if (item === null || item === undefined) {
+      validationBlockers.push(`Exploration item ${i} (${source}) is null/undefined; operation=${operation}`)
+    } else if (typeof item !== 'object') {
+      validationBlockers.push(`Exploration item ${i} (${source}) is a ${typeof item} (operation=${operation}); expected object with status field`)
+    } else if (typeof item.status !== 'string' || (item.status !== 'PASS' && item.status !== 'BLOCKED')) {
+      validationBlockers.push(`Exploration item ${i} (${source}) has invalid status ${JSON.stringify(item.status)} (operation=${operation}); expected PASS or BLOCKED`)
+    } else if (
+      item.status === 'PASS' &&
+      (asArray(item.trueBlockers).some(nonEmpty) || asArray(item.blockingIssues).some(nonEmpty))
+    ) {
+      validationBlockers.push(`Exploration item ${i} (${source}) is PASS but includes blockingIssues or trueBlockers; operation=${operation}`)
+    }
+  }
+  if (validationBlockers.length > 0) return validationBlockers
+
   if (operation === 'migrate') {
     return explorations.flatMap(item => [
       ...asArray(item?.trueBlockers).filter(nonEmpty),
@@ -317,21 +623,78 @@ const hasAuthoringBody = spec =>
   nonEmpty(spec?.body) ||
   (nonEmpty(spec?.template) && Array.isArray(spec?.phase_contracts) && spec.phase_contracts.length > 0 && spec.phase_contracts.every(item => nonEmpty(item?.phase) && nonEmpty(item?.label) && nonEmpty(item?.prompt) && item?.schema && typeof item.schema === 'object'))
 
-const hasAuthoringSpec = (spec, operation, designEvidence) =>
-  spec &&
-  nonEmpty(spec?.name) &&
-  nonEmpty(spec?.description) &&
-  hasAuthoringBody(spec) &&
-  asArray(spec?.phases).length > 0 &&
-  asArray(spec?.phases).every(item => nonEmpty(item?.title)) &&
-  validAssetDisposition(spec?.asset_disposition, spec?.supporting_assets) &&
-  (
-    !requiresAssetDisposition(operation) ||
+// Phase 4: Template Phase Metadata Single Source
+// Derive phases from phase_contracts[].phase for template-mode specs.
+const derivePhasesFromPhaseContracts = spec => {
+  if (!spec) return []
+  const contracts = asArray(spec?.phase_contracts)
+  if (!nonEmpty(spec?.template) || contracts.length === 0) return []
+  return contracts.map(item => {
+    const entry = { title: String(item?.phase || '').trim() }
+    if (nonEmpty(item?.detail)) entry.detail = String(item.detail).trim()
+    return entry
+  })
+}
+
+// Phase 4: Check whether an authoring spec is in template mode.
+const isTemplateMode = spec =>
+  nonEmpty(spec?.template) &&
+  Array.isArray(spec?.phase_contracts) &&
+  spec.phase_contracts.length > 0
+
+const hasAuthoringSpec = (spec, operation, designEvidence, canonicalResult) => {
+  if (!spec) return false
+  // Use canonical projection when available; fall back to raw spec for early checks
+  const effectiveSpec = canonicalResult?.canonicalSpec || spec
+  // Phase 3: Always derive primary workflow path from spec name, even without
+  // canonical projection, so create/update/migrate all enforce primary workflow rules.
+  const workflowName = effectiveSpec?.name || spec?.name || ''
+  const primaryWorkflowPath = canonicalResult?.primaryWorkflowPath || (workflowName ? `.claude/workflows/${workflowName}.js` : '')
+  // Phase 4: Template mode may omit phases (derived from phase_contracts).
+  // Body mode must still provide explicit non-empty phases.
+  let phasesValid = false
+  if (isTemplateMode(effectiveSpec)) {
+    const explicitPhases = asArray(effectiveSpec?.phases)
+    if (explicitPhases.length > 0) {
+      // Explicit phases provided – validate against phase_contracts
+      const derived = derivePhasesFromPhaseContracts(effectiveSpec)
+      const explicitTitles = explicitPhases.map(p => (p?.title || '').trim()).filter(Boolean)
+      const derivedTitles = derived.map(p => p.title)
+      phasesValid = explicitTitles.length === derivedTitles.length &&
+        explicitTitles.every((t, i) => t === derivedTitles[i]) &&
+        explicitPhases.every(item => nonEmpty(item?.title))
+    } else {
+      // Phases omitted – will be derived from phase_contracts
+      // Validate phase_contracts entries have phase titles
+      phasesValid = asArray(effectiveSpec?.phase_contracts).length > 0 &&
+        asArray(effectiveSpec?.phase_contracts).every(item => nonEmpty(item?.phase))
+    }
+  } else {
+    // Body mode: explicit phases required
+    phasesValid = asArray(effectiveSpec?.phases).length > 0 &&
+      asArray(effectiveSpec?.phases).every(item => nonEmpty(item?.title))
+  }
+  return (
+    nonEmpty(effectiveSpec?.name) &&
+    nonEmpty(effectiveSpec?.description) &&
+    hasAuthoringBody(effectiveSpec) &&
+    phasesValid &&
+    validAssetDisposition(effectiveSpec?.asset_disposition, effectiveSpec?.supporting_assets, primaryWorkflowPath) &&
+    validSupportingAssets(effectiveSpec?.supporting_assets, primaryWorkflowPath) &&
     (
-      asArray(spec?.asset_disposition).length > 0 &&
-      dispositionKey(spec.asset_disposition) === dispositionKey(designEvidence?.assetDisposition)
-    )
+      !requiresAssetDisposition(operation) ||
+      (
+        asArray(effectiveSpec?.asset_disposition).length > 0 &&
+        // Phase 3: When canonical projection is active, compare against
+        // the canonical design disposition instead of raw design evidence.
+        (canonicalResult?.canonicalDesignDisposition
+          ? dispositionKey(effectiveSpec.asset_disposition) === dispositionKey(canonicalResult.canonicalDesignDisposition)
+          : dispositionKey(effectiveSpec.asset_disposition) === dispositionKey(designEvidence?.assetDisposition))
+      )
+    ) &&
+    (canonicalResult ? canonicalResult.canonicalBlockers.length === 0 : true)
   )
+}
 const matchesCandidate = (evidence, candidateHash) =>
   hasEvidence(evidence) && isSha256Ref(candidateHash) && evidence?.candidateHash === candidateHash
 const logicLensDefinitions = [
@@ -586,6 +949,12 @@ const requirementSummary = {
   migrationDecisions: args?.migrationDecisions || args?.explorationDisposition || {},
 }
 const reviewFixes = args?.reviewFixes || args?.designReviewRebuttal || args?.reviewCorrections || args?.designCorrections || null
+const rawAuthoringFixes = args?.authoringFixes || args?.generationFixes || null
+const hasDownstreamEvidence = hasEvidence(args?.generationEvidence) ||
+  hasEvidence(args?.validationEvidence) ||
+  hasEvidence(args?.smokeEvidence) ||
+  hasEvidence(args?.applyEvidence)
+const authoringFixes = hasDownstreamEvidence ? null : rawAuthoringFixes
 const suppliedExplorations = asArray(args?.explorations).length > 0
   ? args.explorations
   : (asArray(args?.explorationEvidence).length > 0 ? args.explorationEvidence : null)
@@ -601,8 +970,8 @@ phase('Design')
 
 let designEvidence = reviewFixes ? null : args?.designEvidence
 if (!designEvidence) {
-  const explorations = suppliedExplorations || await parallel(
-    ['target-context', 'runtime-boundaries'].map(lens => () =>
+  const explorationLenses = ['target-context', 'runtime-boundaries']
+  const exploreLens = lens =>
       agent(
         `Explore the ${lens} lens for a WorkflowProgram Native develop request.
 
@@ -651,8 +1020,20 @@ Return structured JSON only.`,
           },
         }),
       )
-    ),
+  let explorations = suppliedExplorations || await parallel(
+    explorationLenses.map(lens => () => exploreLens(lens)),
   )
+
+  if (!suppliedExplorations) {
+    const retryableExplorations = [...explorations]
+    for (let i = 0; i < retryableExplorations.length; i++) {
+      const item = retryableExplorations[i]
+      if (!item || typeof item !== 'object' || !['PASS', 'BLOCKED'].includes(item.status)) {
+        retryableExplorations[i] = await exploreLens(explorationLenses[i] || `item-${i}`)
+      }
+    }
+    explorations = retryableExplorations
+  }
 
   const explorationBlockers = explorationDesignBlockers(explorations, operation, requirementSummary)
   if (explorationBlockers.length > 0) {
@@ -791,8 +1172,8 @@ if (!hasReviewEvidence(reviewEvidence, operation)) {
 
 phase('Author')
 
-let authoringSpec = args?.authoringSpec
-let authoringEvidence = args?.authoringEvidence
+let authoringSpec = authoringFixes ? null : args?.authoringSpec
+let authoringEvidence = authoringFixes ? null : args?.authoringEvidence
 if (!authoringSpec && !authoringEvidence) {
   authoringEvidence = await agent(
     `Create the exact JSON authoring spec for the target Native Workflow JS.
@@ -805,6 +1186,12 @@ ${JSON.stringify(designEvidence)}
 
 Review:
 ${JSON.stringify(reviewEvidence)}
+
+${authoringFixes ? `Authoring correction input:
+${JSON.stringify(authoringFixes)}
+
+Reuse the accepted Design and Review. Do not re-design the workflow. Fix only the authoringSpec. If correction input lists missingSupportingAssets, add one supporting_assets entry with non-empty content for every listed path unless it is the primary workflow path. For each non-primary generate/update item in Design assetDisposition, supporting_asset_path must point to the asset content that will be written into the candidate tree, usually the same target-relative path as the item being generated or updated.
+` : ''}
 
 Phase boundary guidance:
 ${phaseBoundaryGuidance}
@@ -841,7 +1228,7 @@ For sequential phases without a gate (just continue), omit blockWhen/blockStatus
 
 Optional task_model_policy: When the target workflow needs model routing per Agent, set task_model_policy.agent_task_models to a map of agent-label → task-type (e.g. "architecture", "risk-review", "complex-generation"). Omit or leave empty when every agent uses the default model.
 
-Supporting assets and disposition are separate contracts. supporting_assets contains only files that must be generated into the candidate tree, with kind, path, content, and reason. asset_disposition records how existing or target assets are treated, with path, action, reason, and supporting_asset_path when action is generate, update, or archive. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. For update or migrate operations, asset_disposition must match the reviewed design assetDisposition exactly. archive and remove are migration follow-up actions; do not claim managed apply completed them. Return structured JSON only and do not write files.`,
+Supporting assets and disposition are separate contracts. supporting_assets contains only files that must be generated into the candidate tree, with kind, path, content, and reason. asset_disposition records how existing or target assets are treated, with path, action, reason, and supporting_asset_path only when action is generate or update. Use target-relative paths only inside asset_disposition, supporting_asset_path, and supporting_assets.path; never use absolute targetRoot, runRoot, output, or evidence paths. The primary workflow .claude/workflows/<name>.js gets content from body/template + phase_contracts and must not carry supporting_asset_path or appear in supporting_assets. Every non-primary generate/update supporting_asset_path must have exactly one matching supporting_assets entry with content; retain/archive/remove/defer/not-applicable must have empty supporting_asset_path. Do not include runRoot, .workflowprogram/runs, target audit input directories, report output directories, or prior run evidence as managed workflow assets. Valid actions: retain, generate, update, archive, remove, defer, not-applicable. For update or migrate operations, asset_disposition must match the reviewed design assetDisposition exactly after target-relative path normalization and evidence-path pruning. archive and remove are migration follow-up actions; do not claim managed apply completed them. Return structured JSON only and do not write files.`,
     withTaskModel('complex-generation', {
       label: 'workflowprogram-develop:author',
       schema: {
@@ -924,7 +1311,7 @@ Supporting assets and disposition are separate contracts. supporting_assets cont
                 additionalProperties: false,
               },
             },
-            required: ['name', 'description', 'phases', 'supporting_assets', 'asset_disposition'],
+            required: ['name', 'description', 'supporting_assets', 'asset_disposition'],
             additionalProperties: false,
           },
           blockingIssues: { type: 'array', items: { type: 'string' } },
@@ -937,7 +1324,69 @@ Supporting assets and disposition are separate contracts. supporting_assets cont
   authoringSpec = authoringEvidence?.authoringSpec
 }
 
-if (!hasAuthoringSpec(authoringSpec, operation, designEvidence) || authoringEvidence?.status === 'BLOCKED') {
+// Phase 4: Template Phase Metadata Single Source
+// Derive phases from phase_contracts[].phase for template-mode specs
+// before canonical projection, hasAuthoringSpec, and READY_FOR_GENERATION.
+if (authoringSpec && isTemplateMode(authoringSpec)) {
+  const explicitPhases = asArray(authoringSpec.phases)
+  const derivedPhases = derivePhasesFromPhaseContracts(authoringSpec)
+  if (explicitPhases.length > 0) {
+    // Validate explicit phases match phase_contracts
+    const explicitTitles = explicitPhases.map(p => (p?.title || '').trim()).filter(Boolean)
+    const derivedTitles = derivedPhases.map(p => p.title)
+    const mismatch = explicitTitles.length !== derivedTitles.length ||
+      explicitTitles.some((t, i) => t !== derivedTitles[i])
+    if (mismatch) {
+      return respond('BLOCKED_GENERATION', {
+        blockingIssues: [`Template authoring spec phases must match phase_contracts[].phase values. Explicit phases: ${JSON.stringify(explicitTitles)}; expected from phase_contracts: ${JSON.stringify(derivedTitles)}.`],
+        authoringEvidence,
+        nextAction: 'FIX_DESIGN_AND_REINVOKE',
+      })
+    }
+  } else {
+    // Phases omitted or empty – inject derived phases
+  }
+  // Project the canonical phase list even when explicit phases matched; the
+  // template contract remains the single source for phase titles and details.
+  authoringSpec = { ...authoringSpec, phases: derivedPhases }
+}
+
+// Phase 3: Canonical Asset And Supporting Asset Boundary
+// Project designEvidence.assetDisposition into the authoringSpec.asset_disposition
+// before hasAuthoringSpec validation and READY_FOR_GENERATION emission.
+let canonicalResult = null
+let canonicalBlockers = []
+if (
+  authoringSpec &&
+  designEvidence &&
+  (
+    ['update', 'migrate'].includes(operation) ||
+    asArray(authoringSpec?.supporting_assets).length > 0 ||
+    asArray(designEvidence?.assetDisposition).length > 0
+  )
+) {
+  canonicalResult = canonicalizeAssetDisposition(designEvidence, authoringSpec, operation, targetRoot)
+  canonicalBlockers = canonicalResult.canonicalBlockers || []
+  if (canonicalBlockers.length > 0) {
+    const authoringFixable = canonicalBlockers.every(authoringFixableCanonicalBlocker)
+    return respond('BLOCKED_GENERATION', {
+      blockingIssues: canonicalBlockers.map(msg => `Canonical asset disposition error: ${msg}`),
+      authoringEvidence,
+      designEvidence,
+      reviewEvidence,
+      authoringRepair: {
+        supportedCorrectionField: 'authoringFixes',
+        acceptedAliases: ['generationFixes'],
+        missingSupportingAssets: canonicalResult.missingSupportingAssets || [],
+        omitStaleFields: ['authoringEvidence', 'authoringSpec', 'generationEvidence', 'validationEvidence', 'smokeEvidence', 'applyEvidence'],
+        rule: 'When canonical projection fails only because Authoring omitted required supporting asset content, reinvoke with authoringFixes plus accepted designEvidence and reviewEvidence. Do not change FreeSTRIDE directly and do not rerun Design unless Design itself is invalid.',
+      },
+      nextAction: authoringFixable ? 'FIX_AUTHORING_AND_REINVOKE' : 'FIX_DESIGN_AND_REINVOKE',
+    })
+  }
+}
+
+if (!hasAuthoringSpec(authoringSpec, operation, designEvidence, canonicalResult) || authoringEvidence?.status === 'BLOCKED') {
   return respond('BLOCKED_GENERATION', {
     blockingIssues: blockingIssues(authoringEvidence, 'Authoring spec did not pass.'),
     authoringEvidence,
@@ -947,8 +1396,10 @@ if (!hasAuthoringSpec(authoringSpec, operation, designEvidence) || authoringEvid
 
 phase('Generate')
 
+const effectiveAuthoringSpec = canonicalResult?.canonicalSpec || authoringSpec
 const generationEvidence = args?.generationEvidence
 if (!generationEvidence) {
+  // Phase 3: Use canonical spec in generation handoff when available
   const generationHandoff = {
     status: 'READY_FOR_GENERATION',
     workflow: workflowName,
@@ -960,7 +1411,7 @@ if (!generationEvidence) {
     designEvidence,
     reviewEvidence,
     authoringEvidence,
-    authoringSpec,
+    authoringSpec: effectiveAuthoringSpec,
     generationRequest: {
       targetRoot,
       runRoot,
@@ -986,7 +1437,7 @@ if (!generationEvidence) {
     designEvidence,
     reviewEvidence,
     authoringEvidence,
-    authoringSpec,
+    authoringSpec: effectiveAuthoringSpec,
     generationRequest: {
       targetRoot,
       runRoot,
@@ -1022,6 +1473,13 @@ phase('Validate')
 const validationEvidence = args?.validationEvidence
 if (!validationEvidence) {
   return respond('READY_FOR_VALIDATION', {
+    targetRoot,
+    runRoot,
+    requirementSummary,
+    designEvidence,
+    reviewEvidence,
+    authoringEvidence,
+    authoringSpec: effectiveAuthoringSpec,
     candidateRefs: generationEvidence.candidateRefs,
     generationEvidence,
     nextAction: 'RUN_DETERMINISTIC_VALIDATION',
@@ -1045,7 +1503,15 @@ phase('Smoke')
 const smokeEvidence = args?.smokeEvidence
 if (!smokeEvidence) {
   return respond('READY_FOR_SMOKE', {
+    targetRoot,
+    runRoot,
+    requirementSummary,
+    designEvidence,
+    reviewEvidence,
+    authoringEvidence,
+    authoringSpec: effectiveAuthoringSpec,
     candidateRefs: generationEvidence.candidateRefs,
+    generationEvidence,
     validationEvidence,
     nextAction: 'RUN_INTERACTIVE_SMOKE',
   })
@@ -1074,7 +1540,16 @@ const applyEvidence = args?.applyEvidence
 
 if (applyApproved && !applyEvidence) {
   return respond('READY_FOR_APPLY', {
+    targetRoot,
+    runRoot,
+    requirementSummary,
+    designEvidence,
+    reviewEvidence,
+    authoringEvidence,
+    authoringSpec: effectiveAuthoringSpec,
     candidateRefs: generationEvidence.candidateRefs,
+    generationEvidence,
+    validationEvidence,
     smokeEvidence,
     nextAction: 'RUN_CONTROLLED_APPLY',
   })

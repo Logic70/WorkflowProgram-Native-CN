@@ -52,6 +52,24 @@ PLAN_MODE_TOOLS = {
     "ExitPlanMode",
 }
 
+WORKFLOW_SUBAGENT_STRUCTURED_OUTPUT_SUCCESS = "Structured output provided successfully"
+WORKFLOW_SUBAGENT_ATTRIBUTIONS = {
+    "workflow-subagent",
+    "workflowprogram-native-cn:structured-phase-runner",
+}
+ARTIFACT_COMMAND_RUNNER_MARKERS = (
+    "You are a deterministic artifact command runner",
+    "You are a deterministic artifact file command runner",
+)
+ARTIFACT_COMMAND_BEGIN = "---BEGIN_ARTIFACT_COMMAND---"
+ARTIFACT_COMMAND_END = "---END_ARTIFACT_COMMAND---"
+ARTIFACT_COMMAND_BEGIN_PREFIX = "---BEGIN_ARTIFACT_COMMAND "
+ARTIFACT_COMMAND_END_PREFIX = "---END_ARTIFACT_COMMAND "
+ARTIFACT_COMMAND_ALLOWED_TOOLS = {
+    "Bash",
+    "StructuredOutput",
+}
+
 WPN_INTENT_PATTERNS = (
     r"\bWPN\b",
     r"\bWorkflowProgram\b",
@@ -338,6 +356,30 @@ def hook_payload() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def trace_hook_payload(payload: dict[str, Any]) -> None:
+    path_text = os.environ.get("WORKFLOWPROGRAM_GUARD_TRACE_FILE", "").strip()
+    if not path_text:
+        return
+    try:
+        path = Path(path_text)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "tool_name": tool_name(payload),
+                        "keys": sorted(payload.keys()),
+                        "payload": payload,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except OSError:
+        return
+
+
 def tool_name(payload: dict[str, Any]) -> str:
     for key in ("tool_name", "toolName", "tool", "name"):
         value = payload.get(key)
@@ -352,6 +394,164 @@ def tool_input(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, dict):
             return value
     return {}
+
+
+def payload_agent_type(payload: dict[str, Any]) -> str:
+    for key in ("attributionAgent", "agent_type", "agentType"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def payload_agent_id(payload: dict[str, Any]) -> str:
+    for key in ("agentId", "agent_id", "agentID"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def is_workflow_subagent_payload(payload: dict[str, Any]) -> bool:
+    """Workflow subagents are product execution, not foreground assistant edits."""
+
+    attribution_agent = payload_agent_type(payload)
+    explicit_subagent = (
+        (payload.get("isSidechain") is True or bool(payload.get("agent_type")))
+        and attribution_agent in WORKFLOW_SUBAGENT_ATTRIBUTIONS
+        and bool(payload_agent_id(payload))
+    )
+    if explicit_subagent:
+        return True
+    for key in ("transcript_path", "transcriptPath", "transcript"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            normalized = value.replace("\\", "/").lower()
+            if "/subagents/workflows/" in normalized and re.search(r"/agent-[^/]+\.jsonl$", normalized):
+                return True
+    return False
+
+
+def transcript_has_structured_output_success(path: Path, agent_id: str = "") -> bool:
+    """Return true once this workflow subagent has completed StructuredOutput.
+
+    Claude Code can continue sampling a subagent after the StructuredOutput tool
+    reports success. That is harmless only if no further tools are allowed. The
+    hook is invoked before later tools, so we inspect the agent transcript for
+    the prior success tool_result and then fail closed for additional tool use.
+    """
+
+    if not path.is_file():
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if agent_id and str(item.get("agentId") or "").strip() not in {"", agent_id}:
+            continue
+        message = item.get("message")
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for entry in content:
+            if not isinstance(entry, dict) or entry.get("type") != "tool_result":
+                continue
+            text = content_text(entry.get("content"))
+            if WORKFLOW_SUBAGENT_STRUCTURED_OUTPUT_SUCCESS in text:
+                return True
+    return False
+
+
+def transcript_user_texts(path: Path, agent_id: str = "") -> Iterable[str]:
+    if not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return
+    for line in reversed(lines):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if agent_id and str(item.get("agentId") or "").strip() not in {"", agent_id}:
+            continue
+        message = item.get("message")
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        text = content_text(message.get("content"))
+        if text.strip():
+            yield text
+
+
+def artifact_commands_from_text(text: str) -> list[str]:
+    if not any(marker in text for marker in ARTIFACT_COMMAND_RUNNER_MARKERS):
+        return []
+    commands: list[str] = []
+    legacy_pattern = re.escape(ARTIFACT_COMMAND_BEGIN) + r"\s*\n([\s\S]*?)\n" + re.escape(ARTIFACT_COMMAND_END)
+    for match in re.finditer(legacy_pattern, text):
+        command = match.group(1).strip()
+        if command:
+            commands.append(command)
+    multi_pattern = (
+        re.escape(ARTIFACT_COMMAND_BEGIN_PREFIX)
+        + r"(\d+)/(\d+)\s+(write|append)---\s*\n([\s\S]*?)\n"
+        + re.escape(ARTIFACT_COMMAND_END_PREFIX)
+        + r"\1/\2\s+\3---"
+    )
+    for match in re.finditer(multi_pattern, text):
+        command = match.group(4).strip()
+        if command:
+            commands.append(command)
+    return commands
+
+
+def workflow_subagent_artifact_commands(payload: dict[str, Any]) -> list[str]:
+    agent_id = payload_agent_id(payload)
+    commands: list[str] = []
+    for path in workflow_subagent_transcript_candidates(payload, agent_id):
+        for text in transcript_user_texts(path, agent_id):
+            commands.extend(artifact_commands_from_text(text))
+    return commands
+
+
+def workflow_subagent_structured_output_complete(payload: dict[str, Any]) -> bool:
+    agent_id = payload_agent_id(payload)
+    for path in workflow_subagent_transcript_candidates(payload, agent_id):
+        if transcript_has_structured_output_success(path, agent_id):
+            return True
+    return False
+
+
+def workflow_subagent_transcript_candidates(payload: dict[str, Any], agent_id: str) -> list[Path]:
+    path = transcript_path(payload)
+    if not path:
+        return []
+
+    candidates: list[Path] = [path]
+    agent_filename = agent_id if agent_id.startswith("agent-") else f"agent-{agent_id}"
+    if agent_id:
+        session_dir = path.with_suffix("") if path.suffix == ".jsonl" else path
+        workflows_dir = session_dir / "subagents" / "workflows"
+        if workflows_dir.is_dir():
+            candidates.extend(workflows_dir.glob(f"*/{agent_filename}.jsonl"))
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
 
 
 def transcript_path(payload: dict[str, Any]) -> Path | None:
@@ -435,6 +635,16 @@ def is_claude_plan_path(path: Path) -> bool:
     return "/.claude/plans/" in normalized and normalized.endswith(".md")
 
 
+def path_mentions_wpn_managed_prefix(path: Path) -> bool:
+    normalized = str(path).replace("\\", "/").lower()
+    return (
+        normalized.startswith(".claude/")
+        or normalized.startswith(".workflowprogram/")
+        or "/.claude/" in normalized
+        or "/.workflowprogram/" in normalized
+    )
+
+
 def is_managed_target_path(path: Path, state: dict[str, Any]) -> bool:
     target_root = Path(str(state.get("targetRoot") or ""))
     run_root = Path(str(state.get("runRoot") or ""))
@@ -486,8 +696,25 @@ def command_writes_managed_target(command: str, cwd: Path, state: dict[str, Any]
     return False
 
 
+def command_mentions_wpn_managed_prefix(command: str) -> bool:
+    return any(True for _ in command_path_literals(command))
+
+
 def command_has_known_side_effect(command: str) -> bool:
     return any(token in command for token in SIDE_EFFECT_COMMAND_TOKENS)
+
+
+def command_requires_wpn_state(command: str) -> bool:
+    lowered = command.lower()
+    if command_is_commit(command) or re.search(r"\bgit\s+(?:add|rm|mv)\b", lowered):
+        return True
+    if command_has_known_side_effect(command):
+        return True
+    if command_mentions_wpn_managed_prefix(command) and (
+        command_writes(command) or command_embedded_writer(command)
+    ):
+        return True
+    return False
 
 
 def command_is_commit(command: str) -> bool:
@@ -530,6 +757,11 @@ def block(reason: str, state: dict[str, Any] | None = None) -> int:
         "status": "BLOCKED",
         "reason": reason,
         "guard": "workflowprogram-foreground-guard",
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        },
     }
     if state:
         payload["workflowStatus"] = state.get("workflowStatus")
@@ -546,17 +778,41 @@ def allow(reason: str = "allowed") -> int:
     return 0
 
 
+def check_workflow_subagent_tool(payload: dict[str, Any]) -> int:
+    if workflow_subagent_structured_output_complete(payload):
+        return block(
+            "Workflow subagent already completed StructuredOutput; further tool use would mutate or replace captured phase evidence. Respond exactly DONE now; do not call any more tools.",
+        )
+    artifact_commands = workflow_subagent_artifact_commands(payload)
+    if artifact_commands:
+        name = tool_name(payload)
+        if name not in ARTIFACT_COMMAND_ALLOWED_TOOLS:
+            return block(
+                "Artifact writer workflow subagents may only call Bash for the exact generated artifact command and StructuredOutput for the final result; do not call Read, Write, Edit, Glob, Grep, or helper-file tools.",
+            )
+        if name == "Bash":
+            requested_command = str(tool_input(payload).get("command") or "").strip()
+            if requested_command not in set(artifact_commands):
+                return block(
+                    "Artifact writer workflow subagents must run exactly one generated command between BEGIN_ARTIFACT_COMMAND and END_ARTIFACT_COMMAND markers; extra helper files, cleanup commands, alternate shells, combined commands, and modified commands are blocked. Do not retry rewritten commands. If you cannot run the marker command byte-for-byte, call StructuredOutput with status BLOCKED and include this guard reason.",
+                )
+    return allow("workflow-subagent")
+
+
 def check_file_tool(payload: dict[str, Any], state: dict[str, Any] | None) -> int:
     if not state:
         if has_wpn_intent(payload):
             for raw_path in input_paths(tool_input(payload)):
-                if is_claude_plan_path(Path(raw_path)):
+                path = Path(raw_path)
+                if is_claude_plan_path(path):
                     return block(
                         "WorkflowProgram Native requests must not be converted into Claude Code plan-mode files; invoke the product Workflow directly.",
                     )
-            return block(
-                "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground file edit.",
-            )
+                if path_mentions_wpn_managed_prefix(path):
+                    return block(
+                        "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground file edit.",
+                    )
+            return allow("no-state-product-file-tool")
         return allow("no-state")
     for raw_path in input_paths(tool_input(payload)):
         path = Path(raw_path)
@@ -582,11 +838,7 @@ def check_bash_tool(payload: dict[str, Any]) -> int:
     found = find_state_from_path(cwd)
     state = current_state_from_found(payload, found)
     if not state:
-        if has_wpn_intent(payload) and (
-            command_writes(command)
-            or command_has_known_side_effect(command)
-            or command_embedded_writer(command)
-        ):
+        if has_wpn_intent(payload) and command_requires_wpn_state(command):
             return block(
                 "WPN / WorkflowProgram Native requests must launch the product Workflow before any foreground shell write or side-effect script.",
             )
@@ -693,7 +945,10 @@ def command_record(args: argparse.Namespace) -> int:
 
 def command_check(_: argparse.Namespace) -> int:
     payload = hook_payload()
+    trace_hook_payload(payload)
     name = tool_name(payload)
+    if is_workflow_subagent_payload(payload):
+        return check_workflow_subagent_tool(payload)
     if name in PLAN_MODE_TOOLS:
         return check_plan_tool(payload)
     if name in AGENT_TOOLS:

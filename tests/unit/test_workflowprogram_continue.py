@@ -47,6 +47,30 @@ def authoring_spec() -> dict:
     }
 
 
+def template_authoring_spec_without_phases() -> dict:
+    return {
+        "name": "template-probe",
+        "description": "Template-based probe workflow.",
+        "template": "sequential-agent-workflow-v1",
+        "phase_contracts": [
+            {
+                "phase": "Probe",
+                "detail": "Return PASS.",
+                "label": "template-probe:probe",
+                "prompt": "Probe the request and return PASS.",
+                "schema": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string", "enum": ["PASS"]}},
+                    "required": ["status"],
+                },
+            }
+        ],
+        "supporting_assets": [],
+        "asset_disposition": [],
+        "task_model_policy": {"agent_task_models": {}},
+    }
+
+
 def pass_design_evidence() -> dict:
     return {
         "status": "PASS",
@@ -69,8 +93,14 @@ def pass_review_evidence() -> dict:
     }
 
 
-def ready_for_generation_result(target: Path, run_root: Path, *, status: str = "READY_FOR_GENERATION") -> dict:
-    spec = authoring_spec()
+def ready_for_generation_result(
+    target: Path,
+    run_root: Path,
+    *,
+    status: str = "READY_FOR_GENERATION",
+    spec: dict | None = None,
+) -> dict:
+    spec = spec if spec is not None else authoring_spec()
     return {
         "summary": "Workflow tool wrapper",
         "result": {
@@ -154,6 +184,30 @@ def test_continue_runs_generation_pipeline_from_saved_workflow_result(tmp_path: 
     assert candidate.exists()
     assert json.loads(authoring.read_text(encoding="utf-8")) == authoring_spec()
     assert json.loads(handoff.read_text(encoding="utf-8"))["authoringSpec"] == authoring_spec()
+
+
+def test_continue_projects_template_phases_before_persistence(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    run_root = tmp_path / "run"
+    target.mkdir()
+    workflow_result = run_root / "outputs" / "stages" / "latest-workflow-result.json"
+    spec = template_authoring_spec_without_phases()
+    write_json(workflow_result, ready_for_generation_result(target, run_root, spec=spec))
+
+    completed = run_continue(workflow_result, target, run_root)
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    expected_phases = [{"title": "Probe", "detail": "Return PASS."}]
+    authoring = run_root / "native-workflow-authoring.json"
+    handoff = run_root / "outputs" / "stages" / "native-workflow-generation-handoff-input.json"
+    candidate = run_root / "outputs" / "candidate" / ".claude" / "workflows" / "template-probe.js"
+    persisted_spec = json.loads(authoring.read_text(encoding="utf-8"))
+    handoff_spec = json.loads(handoff.read_text(encoding="utf-8"))["authoringSpec"]
+    assert persisted_spec["phases"] == expected_phases
+    assert handoff_spec["phases"] == expected_phases
+    content = candidate.read_text(encoding="utf-8")
+    assert '"title": "Probe"' in content
+    assert "phase('Probe')" in content
 
 
 def test_continue_blocks_non_generation_status_before_candidate_write(tmp_path: Path) -> None:
